@@ -1,0 +1,10 @@
+﻿fileFormatVersion: 2
+guid: 3ae34decb04e14c898c8e3e153131089
+timeCreated: 1708532299
+AssetOrigin:
+  serializedVersion: 1
+  productId: 250892
+  packageName: "AI Toolbox with ChatGPT, DALL\xB7E, Whisper, Gemini etc"
+  packageVersion: 7.1.0
+  assetPath: Assets/AI Toolbox/Samples/Runtime Usage/[Demo] DALL-E (Image Generation)/ImageGenerationDemo.cs
+  uploadId: 894988
