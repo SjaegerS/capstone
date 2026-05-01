@@ -45,7 +45,7 @@
             <ui:VisualElement name="settings" style="background-color: rgba(0, 0, 0, 0); border-left-color: rgb(25, 25, 25); border-right-color: rgb(25, 25, 25); border-top-color: rgb(25, 25, 25); border-bottom-color: rgb(25, 25, 25); border-left-width: 1px; border-right-width: 1px; border-top-width: 1px; border-bottom-width: 1px; border-top-left-radius: 3px; border-bottom-left-radius: 3px; border-top-right-radius: 3px; border-bottom-right-radius: 3px; margin-left: 3px; margin-right: 6px; margin-top: 5px; margin-bottom: 8px; transition-duration: 0.2s; transition-timing-function: ease-in-out; flex-shrink: 0;">
                 <ui:Toggle label="Unity developer role" name="ai-role-toggle" value="true" tooltip="AI assumes the role of a Unity developer. If disabled, AI has no specific role." style="margin-top: 5px;" />
                 <ui:Slider picking-mode="Ignore" label="Temperature" value="1" high-value="1" name="temperature-slider" tooltip="Temperature controls randomness: Lower values result in less random results." />
-                <ui:DropdownField label="Chatbot" index="0" choices="OpenAI ChatGPT,Azure ChatGPT,Google Gemini,Ollama" name="ai-provider-dropdown" />
+                <ui:DropdownField label="Chatbot" index="0" choices="OpenAI ChatGPT,Azure ChatGPT,Google Gemini,Anthropic Claude,Ollama" name="ai-provider-dropdown" />
                 <ui:DropdownField label="Model" name="ai-model-dropdown" index="0" style="margin-bottom: 5px;" />
                 <ui:TextField label="Model code" tooltip="Model code is used to identify the model in the backend, e.g., gpt-3.5-turbo or gemini-1.5-pro." name="model-code-textfield" style="margin-bottom: 5px; display: none;" />
             </ui:VisualElement>
