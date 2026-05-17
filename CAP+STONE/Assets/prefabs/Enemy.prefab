@@ -17,7 +17,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!4 &7581567756106669041
 Transform:
   m_ObjectHideFlags: 0
@@ -104,3 +104,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 06e1011b4a203324f99641d212ab04d0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::UnitController
+  healthBarPrefab: {fileID: 758894339687789687, guid: 6d1cc1346af67754dbe86ee31a32294b, type: 3}

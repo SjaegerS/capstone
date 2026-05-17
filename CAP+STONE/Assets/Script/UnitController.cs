@@ -3,10 +3,12 @@ using System.Collections;
 
 public class UnitController : MonoBehaviour
 {
+    [Header("HP Bar Prefab")]
+    [SerializeField] private GameObject healthBarPrefab;
+
     public CharacterStats Stats { get; private set; }
     public bool IsDead => isDead;
 
-    // BattleManager가 구독해 라운드 종료를 감지
     public System.Action OnDeath;
 
     private UnitController targetUnit;
@@ -17,12 +19,8 @@ public class UnitController : MonoBehaviour
     void Awake()
     {
         spriteRenderer = GetComponent<SpriteRenderer>();
-        healthBar = GetComponent<HealthBar>();
-        if (healthBar == null)
-            healthBar = gameObject.AddComponent<HealthBar>();
     }
 
-    // 최초 생성 시 호출
     public void Initialize(CharacterStats stats, Vector3 spawnPosition)
     {
         if (stats == null)
@@ -31,10 +29,19 @@ public class UnitController : MonoBehaviour
             return;
         }
         Stats = stats;
+
+        // 씬 루트에 독립 생성 → LateUpdate로 추적 (부모-자식 Canvas 충돌 방지)
+        if (healthBar == null && healthBarPrefab != null)
+        {
+            GameObject barObj = Instantiate(healthBarPrefab);
+            healthBar = barObj.GetComponent<HealthBar>();
+            if (healthBar != null)
+                healthBar.Setup(transform);
+        }
+
         ResetVisuals(spawnPosition);
     }
 
-    // 라운드 재시작 시 플레이어 재사용 (HP 풀 리셋 + 위치 복귀)
     public void Revive(Vector3 spawnPosition)
     {
         StopAllCoroutines();
@@ -45,11 +52,15 @@ public class UnitController : MonoBehaviour
 
     void ResetVisuals(Vector3 spawnPosition)
     {
+        gameObject.SetActive(true);
         transform.position = spawnPosition;
         isDead = false;
         if (spriteRenderer != null) spriteRenderer.enabled = true;
-        healthBar?.SetVisible(true);
-        healthBar?.SetRatio(1f);
+        if (healthBar != null)
+        {
+            healthBar.gameObject.SetActive(true);
+            healthBar.SetHP(Stats.CurrentHP, Stats.MaxHP);
+        }
     }
 
     public void SetTarget(UnitController target) => targetUnit = target;
@@ -93,13 +104,21 @@ public class UnitController : MonoBehaviour
     {
         if (isDead || Stats == null) return;
         Stats.CurrentHP -= damage;
-        healthBar?.SetRatio(Stats.CurrentHP / Stats.MaxHP);
+        healthBar?.SetHP(Stats.CurrentHP, Stats.MaxHP);
         if (Stats.CurrentHP <= 0f) Die();
+    }
+
+    // 유닛 파괴 시 씬 루트에 남아있는 HP바도 함께 제거
+    void OnDestroy()
+    {
+        if (healthBar != null)
+            Destroy(healthBar.gameObject);
     }
 
     private void Die()
     {
         isDead = true;
+        StopAllCoroutines();
         if (spriteRenderer != null) spriteRenderer.enabled = false;
         healthBar?.SetVisible(false);
         OnDeath?.Invoke();

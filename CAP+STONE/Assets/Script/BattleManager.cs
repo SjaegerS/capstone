@@ -13,6 +13,8 @@ public class BattleManager : MonoBehaviour
 
     [Header("Settings")]
     public float roundInterval = 1.5f;
+    [Tooltip("두 유닛이 멈추는 간격 (월드 단위). 캐릭터가 겹치면 키우세요.")]
+    public float stopGap = 1.5f;
 
     private UnitController currentPlayer;
     private UnitController currentEnemy;
@@ -20,6 +22,11 @@ public class BattleManager : MonoBehaviour
 
     void Start()
     {
+        UnitController[] sceneUnits = FindObjectsOfType<UnitController>();
+        if (sceneUnits.Length > 0)
+            Debug.LogWarning($"[BattleManager] 씬에 UnitController 인스턴스 {sceneUnits.Length}개 감지. " +
+                             "Hierarchy에서 player, Enemy, player_healthbar, enemy_healthbar를 삭제하고 씬을 저장하세요.");
+
         if (!ValidateReferences()) return;
         StartCoroutine(BattleLoop());
     }
@@ -36,9 +43,9 @@ public class BattleManager : MonoBehaviour
 
     IEnumerator BattleLoop()
     {
-        // 플레이어 최초 1회 생성
-        var pStats = new CharacterStats("P1", "Hero",    100, 15, 1.2f, 3f, 5);
+        var pStats = new CharacterStats("P1", "Hero", 100, 15, 1.2f, 3f, 5);
         GameObject pObj = Instantiate(playerPrefab, playerSpawn.position, Quaternion.identity);
+        pObj.SetActive(true);
         currentPlayer = pObj.GetComponent<UnitController>();
         if (currentPlayer == null)
         {
@@ -52,13 +59,12 @@ public class BattleManager : MonoBehaviour
             roundCount++;
             Debug.Log($"[BattleManager] 라운드 {roundCount} 시작");
 
-            // 플레이어: HP 풀 리셋 + 스폰 지점 복귀 (2라운드~)
             if (roundCount > 1)
                 currentPlayer.Revive(playerSpawn.position);
 
-            // 적: 매 라운드 새 인스턴스
             var eStats = new CharacterStats("E1", "Monster", 80, 10, 1.0f, 2f, 2);
             GameObject eObj = Instantiate(enemyPrefab, enemySpawn.position, Quaternion.identity);
+            eObj.SetActive(true);
             currentEnemy = eObj.GetComponent<UnitController>();
             if (currentEnemy == null)
             {
@@ -67,9 +73,8 @@ public class BattleManager : MonoBehaviour
             }
             currentEnemy.Initialize(eStats, enemySpawn.position);
 
-            // 라운드 결과 추적
-            bool roundDone  = false;
-            bool playerWon  = false;
+            bool roundDone = false;
+            bool playerWon = false;
 
             currentEnemy.OnDeath  = () => { roundDone = true; playerWon = true;  };
             currentPlayer.OnDeath = () => { roundDone = true; playerWon = false; };
@@ -77,14 +82,20 @@ public class BattleManager : MonoBehaviour
             currentPlayer.SetTarget(currentEnemy);
             currentEnemy.SetTarget(currentPlayer);
 
-            Vector3 meetPos = (playerSpawn.position + enemySpawn.position) / 2f;
-            currentPlayer.MoveTo(meetPos);
-            currentEnemy.MoveTo(meetPos);
+            // 중앙에서 ±(stopGap/2) 떨어진 각자의 정지 지점 계산
+            Vector3 center = (playerSpawn.position + enemySpawn.position) / 2f;
+            Vector3 dir = (enemySpawn.position - playerSpawn.position).normalized;
+            if (dir == Vector3.zero) dir = Vector3.right;
 
-            // 플레이어가 중앙 근처에 도달할 때까지 대기 (or 라운드 조기 종료)
+            Vector3 playerStopPos = center - dir * (stopGap / 2f);
+            Vector3 enemyStopPos  = center + dir * (stopGap / 2f);
+
+            currentPlayer.MoveTo(playerStopPos);
+            currentEnemy.MoveTo(enemyStopPos);
+
             yield return new WaitUntil(() =>
                 roundDone ||
-                Vector3.Distance(currentPlayer.transform.position, meetPos) <= 0.5f);
+                Vector3.Distance(currentPlayer.transform.position, playerStopPos) <= 0.5f);
 
             if (!roundDone)
             {
@@ -92,15 +103,15 @@ public class BattleManager : MonoBehaviour
                 currentEnemy.StartCombat();
             }
 
-            // 라운드 종료 대기
             yield return new WaitUntil(() => roundDone);
 
             if (playerWon)
             {
                 Debug.Log($"[BattleManager] 라운드 {roundCount} 클리어");
+                currentPlayer.SetTarget(null);
                 Destroy(currentEnemy.gameObject);
+                currentEnemy = null;
                 yield return new WaitForSeconds(roundInterval);
-                // 다음 라운드 자동 시작
             }
             else
             {
