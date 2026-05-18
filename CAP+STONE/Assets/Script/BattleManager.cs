@@ -16,6 +16,9 @@ public class BattleManager : MonoBehaviour
     [Tooltip("두 유닛이 멈추는 간격 (월드 단위). 캐릭터가 겹치면 키우세요.")]
     public float stopGap = 1.5f;
 
+    [Header("Coin System")]
+    public CoinSpawner coinSpawner;
+
     private UnitController currentPlayer;
     private UnitController currentEnemy;
     private int roundCount = 0;
@@ -75,8 +78,9 @@ public class BattleManager : MonoBehaviour
 
             bool roundDone = false;
             bool playerWon = false;
+            Vector3 enemyDeathPos = Vector3.zero;
 
-            currentEnemy.OnDeath  = () => { roundDone = true; playerWon = true;  };
+            currentEnemy.OnDeath  = () => { enemyDeathPos = currentEnemy.transform.position; roundDone = true; playerWon = true;  };
             currentPlayer.OnDeath = () => { roundDone = true; playerWon = false; };
 
             currentPlayer.SetTarget(currentEnemy);
@@ -108,6 +112,7 @@ public class BattleManager : MonoBehaviour
             if (playerWon)
             {
                 Debug.Log($"[BattleManager] 라운드 {roundCount} 클리어");
+                coinSpawner?.SpawnCoins(enemyDeathPos);
                 currentPlayer.SetTarget(null);
                 Destroy(currentEnemy.gameObject);
                 currentEnemy = null;
