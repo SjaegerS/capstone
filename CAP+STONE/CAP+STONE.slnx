@@ -1,0 +1,5 @@
+﻿<Solution>
+  <Project Path="AiToolbox.csproj" />
+  <Project Path="Assembly-CSharp.csproj" />
+  <Project Path="AiToolbox.Samples.csproj" />
+</Solution>
