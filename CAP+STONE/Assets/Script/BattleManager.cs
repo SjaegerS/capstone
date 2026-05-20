@@ -11,6 +11,12 @@ public class BattleManager : MonoBehaviour
     public Transform playerSpawn;
     public Transform enemySpawn;
 
+    [Header("Balance")]
+    [Tooltip("플레이어 스탯 강화 횟수 (0 = 미강화)")]
+    public int playerUpgradeLevel = 0;
+    [Tooltip("시작 스테이지 번호")]
+    public int startingStage = 1;
+
     [Header("Settings")]
     public float roundInterval = 1.5f;
     [Tooltip("두 유닛이 멈추는 간격 (월드 단위). 캐릭터가 겹치면 키우세요.")]
@@ -22,6 +28,7 @@ public class BattleManager : MonoBehaviour
     private UnitController currentPlayer;
     private UnitController currentEnemy;
     private int roundCount = 0;
+    private int currentStage;
 
     void Start()
     {
@@ -46,7 +53,9 @@ public class BattleManager : MonoBehaviour
 
     IEnumerator BattleLoop()
     {
-        var pStats = new CharacterStats("P1", "Hero", 100, 15, 1.2f, 3f, 5);
+        currentStage = Mathf.Max(1, startingStage);
+
+        var pStats = CharacterStats.CreatePlayer(playerUpgradeLevel);
         GameObject pObj = Instantiate(playerPrefab, playerSpawn.position, Quaternion.identity);
         pObj.SetActive(true);
         currentPlayer = pObj.GetComponent<UnitController>();
@@ -60,12 +69,13 @@ public class BattleManager : MonoBehaviour
         while (true)
         {
             roundCount++;
-            Debug.Log($"[BattleManager] 라운드 {roundCount} 시작");
 
             if (roundCount > 1)
                 currentPlayer.Revive(playerSpawn.position);
 
-            var eStats = new CharacterStats("E1", "Monster", 80, 10, 1.0f, 2f, 2);
+            var eStats = CharacterStats.CreateEnemy(currentStage);
+            Debug.Log($"[BattleManager] 스테이지 {currentStage} 몬스터 — HP {(int)eStats.MaxHP} / ATK {(int)eStats.AttackDamage} / DEF {(int)eStats.Defense}");
+
             GameObject eObj = Instantiate(enemyPrefab, enemySpawn.position, Quaternion.identity);
             eObj.SetActive(true);
             currentEnemy = eObj.GetComponent<UnitController>();
@@ -86,7 +96,6 @@ public class BattleManager : MonoBehaviour
             currentPlayer.SetTarget(currentEnemy);
             currentEnemy.SetTarget(currentPlayer);
 
-            // 중앙에서 ±(stopGap/2) 떨어진 각자의 정지 지점 계산
             Vector3 center = (playerSpawn.position + enemySpawn.position) / 2f;
             Vector3 dir = (enemySpawn.position - playerSpawn.position).normalized;
             if (dir == Vector3.zero) dir = Vector3.right;
@@ -111,17 +120,30 @@ public class BattleManager : MonoBehaviour
 
             if (playerWon)
             {
-                Debug.Log($"[BattleManager] 라운드 {roundCount} 클리어");
+                int rewardGold = GameBalance.RewardGold(currentStage);
+                int rewardExp  = GameBalance.RewardExp(currentStage);
+                Debug.Log($"[BattleManager] 스테이지 {currentStage} 클리어 — 골드 +{rewardGold} / 경험치 +{rewardExp}");
+
+                GoldManager.Instance?.AddGold(rewardGold);
                 coinSpawner?.SpawnCoins(enemyDeathPos);
+
                 currentPlayer.SetTarget(null);
                 Destroy(currentEnemy.gameObject);
                 currentEnemy = null;
+                currentStage++;
                 yield return new WaitForSeconds(roundInterval);
             }
             else
             {
-                Debug.Log("[BattleManager] 플레이어 사망 — 배틀 종료");
-                yield break;
+                Debug.Log($"[BattleManager] 플레이어 사망 — 스테이지 {currentStage} 재시도");
+                currentPlayer.SetTarget(null);
+                if (currentEnemy != null)
+                {
+                    currentEnemy.SetTarget(null);
+                    Destroy(currentEnemy.gameObject);
+                    currentEnemy = null;
+                }
+                yield return new WaitForSeconds(roundInterval);
             }
         }
     }

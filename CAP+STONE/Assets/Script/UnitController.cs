@@ -94,7 +94,7 @@ public class UnitController : MonoBehaviour
 
         while (!isDead && targetUnit != null && !targetUnit.IsDead)
         {
-            float dmg = Mathf.Max(1f, Stats.AttackDamage - targetUnit.Stats.Defense);
+            float dmg = Mathf.Max(1f, GameBalance.CalculateDamage(Stats.AttackDamage, targetUnit.Stats.Defense));
             targetUnit.TakeDamage(dmg);
             yield return new WaitForSeconds(interval);
         }
