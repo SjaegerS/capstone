@@ -658,7 +658,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: 6a3be4d3f9a8542b790c87068e58387f, type: 3}
+  m_Sprite: {fileID: 21300000, guid: 306fdc0f395624f9f869658fab1c4fd1, type: 3}
   m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1
@@ -795,7 +795,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: 6a3be4d3f9a8542b790c87068e58387f, type: 3}
+  m_Sprite: {fileID: 21300000, guid: 306fdc0f395624f9f869658fab1c4fd1, type: 3}
   m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1
@@ -870,7 +870,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: 6a3be4d3f9a8542b790c87068e58387f, type: 3}
+  m_Sprite: {fileID: 21300000, guid: 306fdc0f395624f9f869658fab1c4fd1, type: 3}
   m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1
@@ -1850,11 +1850,11 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 1473729601663703355, guid: d3ef28200438f4cc1b6db13eed75e277, type: 3}
       propertyPath: m_text
-      value: gegeyiya
+      value: Equipment
       objectReference: {fileID: 0}
     - target: {fileID: 1473729601663703355, guid: d3ef28200438f4cc1b6db13eed75e277, type: 3}
       propertyPath: m_fontSize
-      value: 50
+      value: 45.05
       objectReference: {fileID: 0}
     - target: {fileID: 1473729601663703355, guid: d3ef28200438f4cc1b6db13eed75e277, type: 3}
       propertyPath: m_fontSizeMax
