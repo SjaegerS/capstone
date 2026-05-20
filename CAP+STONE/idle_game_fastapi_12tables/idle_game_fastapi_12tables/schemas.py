@@ -1,61 +1,71 @@
-from pydantic import BaseModel, EmailStr
 from datetime import date, datetime
-from typing import Optional, List
+from typing import List, Optional
+
+from pydantic import BaseModel, EmailStr, Field
 
 
-# --------------------
-# Character Type
-# --------------------
-
-class CharacterTypeResponse(BaseModel):
-    character_type_id: int
-    type_code: str
-    type_name: str
+class CharacterInfoCreate(BaseModel):
+    character_key: str
+    character_name: str
     description: Optional[str] = None
     main_effect: Optional[str] = None
+    image_key: str
+
+
+class CharacterInfoUpdate(BaseModel):
+    character_key: Optional[str] = None
+    character_name: Optional[str] = None
+    description: Optional[str] = None
+    main_effect: Optional[str] = None
+    image_key: Optional[str] = None
+
+
+class CharacterInfoResponse(BaseModel):
+    character_id: int
+    character_key: str
+    character_name: str
+    description: Optional[str] = None
+    main_effect: Optional[str] = None
+    image_key: str
 
     class Config:
         from_attributes = True
 
 
-# --------------------
-# User
-# --------------------
-
 class UserCreate(BaseModel):
     email: EmailStr
     password_hash: str
     nickname: str
-    default_character_type_id: int = 1
+    default_character_id: int = 1
 
 
 class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     password_hash: Optional[str] = None
     nickname: Optional[str] = None
+    current_character_id: Optional[int] = None
     last_login_at: Optional[datetime] = None
 
 
 class UserResponse(BaseModel):
     user_id: int
+    current_character_id: int
     email: str
     nickname: str
     created_at: datetime
     last_login_at: Optional[datetime] = None
+    current_character: Optional[CharacterInfoResponse] = None
 
     class Config:
         from_attributes = True
 
 
-# --------------------
-# Character Status
-# --------------------
-
 class CharacterStatusUpdate(BaseModel):
-    character_type_id: Optional[int] = None
     level: Optional[int] = None
     exp: Optional[int] = None
     required_exp: Optional[int] = None
+    max_hp: Optional[int] = None
+    current_hp: Optional[int] = None
     attack_power: Optional[int] = None
     defense_power: Optional[int] = None
     current_stage: Optional[int] = None
@@ -63,29 +73,27 @@ class CharacterStatusUpdate(BaseModel):
 
 
 class CharacterStatusResponse(BaseModel):
-    character_id: int
+    status_id: int
     user_id: int
-    character_type_id: int
+    character_id: int
     level: int
     exp: int
     required_exp: int
+    max_hp: int
+    current_hp: int
     attack_power: int
     defense_power: int
     current_stage: int
     total_boss_kill_count: int
     updated_at: datetime
-    character_type: Optional[CharacterTypeResponse] = None
+    character: Optional[CharacterInfoResponse] = None
 
     class Config:
         from_attributes = True
 
 
-# --------------------
-# Character Condition
-# --------------------
-
 class CharacterConditionUpdate(BaseModel):
-    condition_score: Optional[int] = None
+    condition_score: Optional[int] = Field(default=None, ge=1, le=3)
     condition_grade: Optional[str] = None
     last_updated_date: Optional[date] = None
 
@@ -93,70 +101,69 @@ class CharacterConditionUpdate(BaseModel):
 class CharacterConditionResponse(BaseModel):
     condition_id: int
     user_id: int
-    character_type_id: int
+    character_id: int
     condition_score: int
     condition_grade: str
     last_updated_date: date
-    character_type: Optional[CharacterTypeResponse] = None
+    character: Optional[CharacterInfoResponse] = None
 
     class Config:
         from_attributes = True
 
 
-# --------------------
-# Currency
-# --------------------
-
 class UserCurrencyUpdate(BaseModel):
     gold: Optional[int] = None
-    gem: Optional[int] = None
 
 
 class UserCurrencyResponse(BaseModel):
     currency_id: int
     user_id: int
     gold: int
-    gem: int
     updated_at: datetime
 
     class Config:
         from_attributes = True
 
 
-# --------------------
-# Item
-# --------------------
-
 class ItemCreate(BaseModel):
+    item_key: str
     item_name: str
     item_type: str
     grade: str = "NORMAL"
+    image_key: str
     base_attack: int = 0
     base_defense: int = 0
     base_effect: Optional[str] = None
-    sell_price: int = 0
+    enhance_base_cost: int = 100
 
 
 class ItemUpdate(BaseModel):
+    item_key: Optional[str] = None
     item_name: Optional[str] = None
     item_type: Optional[str] = None
     grade: Optional[str] = None
+    image_key: Optional[str] = None
     base_attack: Optional[int] = None
     base_defense: Optional[int] = None
     base_effect: Optional[str] = None
-    sell_price: Optional[int] = None
+    enhance_base_cost: Optional[int] = None
 
 
-class ItemResponse(ItemCreate):
+class ItemResponse(BaseModel):
     item_id: int
+    item_key: str
+    item_name: str
+    item_type: str
+    grade: str
+    image_key: str
+    base_attack: int
+    base_defense: int
+    base_effect: Optional[str] = None
+    enhance_base_cost: int
 
     class Config:
         from_attributes = True
 
-
-# --------------------
-# User Item
-# --------------------
 
 class UserItemCreate(BaseModel):
     user_id: int
@@ -183,44 +190,48 @@ class UserItemResponse(BaseModel):
         from_attributes = True
 
 
-# --------------------
-# Quest
-# --------------------
-
 class QuestCreate(BaseModel):
+    quest_key: str
     quest_name: str
     quest_description: Optional[str] = None
     quest_type: str
+    image_key: str
     target_value: int
     reward_gold: int = 0
-    reward_gem: int = 0
     reward_exp: int = 0
     condition_recovery: int = 0
     is_active: bool = True
 
 
 class QuestUpdate(BaseModel):
+    quest_key: Optional[str] = None
     quest_name: Optional[str] = None
     quest_description: Optional[str] = None
     quest_type: Optional[str] = None
+    image_key: Optional[str] = None
     target_value: Optional[int] = None
     reward_gold: Optional[int] = None
-    reward_gem: Optional[int] = None
     reward_exp: Optional[int] = None
     condition_recovery: Optional[int] = None
     is_active: Optional[bool] = None
 
 
-class QuestResponse(QuestCreate):
+class QuestResponse(BaseModel):
     quest_id: int
+    quest_key: str
+    quest_name: str
+    quest_description: Optional[str] = None
+    quest_type: str
+    image_key: str
+    target_value: int
+    reward_gold: int
+    reward_exp: int
+    condition_recovery: int
+    is_active: bool
 
     class Config:
         from_attributes = True
 
-
-# --------------------
-# User Quest
-# --------------------
 
 class UserQuestCreate(BaseModel):
     user_id: int
@@ -256,30 +267,26 @@ class UserQuestResponse(BaseModel):
         from_attributes = True
 
 
-# --------------------
-# Phone Usage Log
-# --------------------
-
 class PhoneUsageLogCreate(BaseModel):
     user_id: int
     usage_date: date
     total_screen_minutes: int = 0
-    target_app_minutes: int = 0
-    night_usage_minutes: int = 0
-    is_life_pattern_good: bool = True
 
 
-class PhoneUsageLogResponse(PhoneUsageLogCreate):
+class PhoneUsageLogUpdate(BaseModel):
+    total_screen_minutes: Optional[int] = None
+
+
+class PhoneUsageLogResponse(BaseModel):
     usage_log_id: int
+    user_id: int
+    usage_date: date
+    total_screen_minutes: int
     created_at: datetime
 
     class Config:
         from_attributes = True
 
-
-# --------------------
-# AI Feedback Log
-# --------------------
 
 class AIFeedbackCreate(BaseModel):
     user_id: int
@@ -290,17 +297,19 @@ class AIFeedbackCreate(BaseModel):
     condition_result: str = "NORMAL"
 
 
-class AIFeedbackResponse(AIFeedbackCreate):
+class AIFeedbackResponse(BaseModel):
     feedback_id: int
+    user_id: int
+    usage_log_id: Optional[int] = None
+    feedback_content: str
+    pattern_summary: Optional[str] = None
+    quest_suggestion: Optional[str] = None
+    condition_result: str
     created_at: datetime
 
     class Config:
         from_attributes = True
 
-
-# --------------------
-# Offline Reward Box
-# --------------------
 
 class OfflineRewardBoxCreate(BaseModel):
     user_id: int
@@ -320,8 +329,14 @@ class OfflineRewardBoxUpdate(BaseModel):
     claimed_at: Optional[datetime] = None
 
 
-class OfflineRewardBoxResponse(OfflineRewardBoxCreate):
+class OfflineRewardBoxResponse(BaseModel):
     reward_box_id: int
+    user_id: int
+    accumulated_seconds: int
+    boss_kill_count: int
+    reward_gold: int
+    reward_exp: int
+    is_claimed: bool
     created_at: datetime
     claimed_at: Optional[datetime] = None
 
@@ -329,12 +344,8 @@ class OfflineRewardBoxResponse(OfflineRewardBoxCreate):
         from_attributes = True
 
 
-# --------------------
-# Joined response
-# --------------------
-
 class UserDetailResponse(UserResponse):
-    character_status: Optional[CharacterStatusResponse] = None
+    character_statuses: List[CharacterStatusResponse] = []
     currency: Optional[UserCurrencyResponse] = None
     conditions: List[CharacterConditionResponse] = []
     user_items: List[UserItemResponse] = []
