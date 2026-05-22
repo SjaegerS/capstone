@@ -32,7 +32,10 @@ public class BattleManager : MonoBehaviour
 
     void Start()
     {
-        UnitController[] sceneUnits = FindObjectsOfType<UnitController>();
+        UnitController[] sceneUnits = FindObjectsByType<UnitController>( 
+            FindObjectsInactive.Exclude, 
+            FindObjectsSortMode.None
+            );
         if (sceneUnits.Length > 0)
             Debug.LogWarning($"[BattleManager] 씬에 UnitController 인스턴스 {sceneUnits.Length}개 감지. " +
                              "Hierarchy에서 player, Enemy, player_healthbar, enemy_healthbar를 삭제하고 씬을 저장하세요.");
