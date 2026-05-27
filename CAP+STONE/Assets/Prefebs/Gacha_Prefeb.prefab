@@ -678,6 +678,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1018736951697813802}
   - component: {fileID: 1698092543907906994}
+  - component: {fileID: 884100000000000001}
   m_Layer: 0
   m_Name: Gacha_Prefeb
   m_TagString: Untagged
@@ -730,6 +731,69 @@ MonoBehaviour:
   m_FlexibleWidth: -1
   m_FlexibleHeight: -1
   m_LayoutPriority: 1
+--- !u!114 &884100000000000001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3094566105490453336}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ae75c0a26ef84db9bde8c2f9dc390731, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  closedChestSprite: {fileID: 21300000, guid: 76153c57efc424237bd9c3ca873d1195, type: 3}
+  openChestSprite: {fileID: 21300000, guid: 3538d79abdc1e4bac8c45a6134d253eb, type: 3}
+  lightSprite: {fileID: 21300000, guid: 166e683030d2d45f1b931f91e5bc4497, type: 3}
+  defaultEquipmentSprite: {fileID: 5484530786232191585, guid: c6f8f8e0065b3bc4fa356073612c17ee, type: 3}
+  normalEquipmentSprites:
+  - {fileID: 5484530786232191585, guid: c6f8f8e0065b3bc4fa356073612c17ee, type: 3}
+  - {fileID: 7677242939668689453, guid: e35a07ba11532fc40a8328facb67bb71, type: 3}
+  - {fileID: -3639010851842445118, guid: ea80d38fc7a425b439606482ceadbb1a, type: 3}
+  - {fileID: -7783906087823633854, guid: c7c5c10a1b608ff47834d1bc3660ee25, type: 3}
+  - {fileID: -5065893325219297937, guid: 672dede810e4f824e8f649da842f4d91, type: 3}
+  - {fileID: 3829003612185374830, guid: f67e08dbbe0acb442a758ddce8477432, type: 3}
+  - {fileID: -8578303388637611674, guid: 9c3c60dc3697932499deb5e0ca6e6995, type: 3}
+  - {fileID: -5863390935135851037, guid: a180f369b569a3745b07c60d5ba23399, type: 3}
+  rareEquipmentSprites:
+  - {fileID: -2646527361508959387, guid: 5951dfa517bda3749bdd504fdca1f68e, type: 3}
+  - {fileID: 8299208036315593649, guid: 6cba27bba28252441af0bd1ca38469ed, type: 3}
+  - {fileID: 8500422115700002159, guid: 5074acbe15e97dd44914e4980b079977, type: 3}
+  - {fileID: -3719325683332940566, guid: 6109b8cd934be004da0053863c45aac1, type: 3}
+  - {fileID: 5256798025601114345, guid: 77e9f0176b19e104ba7d7e947ab7a07d, type: 3}
+  - {fileID: 2008485469734422367, guid: 301f8381aa7751c4ebe851b22278b4e9, type: 3}
+  - {fileID: -1501704005656746270, guid: f7d50874ef72fe24192c0938a7656a46, type: 3}
+  - {fileID: -8492057447514066071, guid: 59699e94a4730d54eb5cf7cf4e413602, type: 3}
+  superRareEquipmentSprites:
+  - {fileID: -8164347226678848929, guid: 6c3dbab66d396964daf04e970f182065, type: 3}
+  - {fileID: -1085720712424754497, guid: 627cd4f98c85d26418fc01b8a49bdd0f, type: 3}
+  - {fileID: -6314967673412835307, guid: 7194539169d51d34bb42318ac9d94ea1, type: 3}
+  - {fileID: -8044452297709507208, guid: e633b43a6d19f194fb17546a691a4a40, type: 3}
+  - {fileID: -2635399336469931816, guid: 4a564eb0083f24b488c8952221a516f4, type: 3}
+  - {fileID: -1019137185427022637, guid: 875e46c0f9686f542829e078d3ef7651, type: 3}
+  - {fileID: 2991086706654554877, guid: 0bdd6d3747fe93d45b7a042b18f5e57f, type: 3}
+  - {fileID: -4708743104079888742, guid: 9974d1cf3ff98234ba9fc60b3fe684fb, type: 3}
+  gemText: {fileID: 0}
+  onePullGemCost: 100
+  elevenPullGemCost: 1000
+  fiftyFivePullGemCost: 5000
+  normalRate: 0.8
+  rareRate: 0.17
+  shakeDuration: 1.15
+  openDuration: 0.45
+  lightDuration: 0.8
+  finishDelay: 0.35
+  dimColor: {r: 0, g: 0, b: 0, a: 0.86}
+  lightColor: {r: 1, g: 1, b: 1, a: 0.9}
+  normalLightColor: {r: 1, g: 1, b: 1, a: 0.9}
+  rareLightColor: {r: 0.15, g: 1, b: 0.35, a: 0.95}
+  superRareLightColor: {r: 1, g: 0.12, b: 0.08, a: 0.95}
+  closedChestSize: {x: 410, y: 365}
+  openChestSize: {x: 420, y: 445}
+  innerLightSize: {x: 980, y: 980}
+  innerLightPosition: {x: 0, y: 0}
+  resultStartPosition: {x: 0, y: -40}
 --- !u!1 &3529177762003420918
 GameObject:
   m_ObjectHideFlags: 0

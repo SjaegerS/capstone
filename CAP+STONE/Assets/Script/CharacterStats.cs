@@ -26,9 +26,16 @@ public class CharacterStats
 
     public static CharacterStats CreatePlayer(int upgradeLevel)
     {
-        float hp  = Mathf.Round(GameBalance.PlayerStatAfterUpgrade(GameBalance.PlayerBaseHP,  upgradeLevel));
-        float atk = Mathf.Round(GameBalance.PlayerStatAfterUpgrade(GameBalance.PlayerBaseATK, upgradeLevel));
-        float def = Mathf.Round(GameBalance.PlayerStatAfterUpgrade(GameBalance.PlayerBaseDEF, upgradeLevel));
+        return CreatePlayer(upgradeLevel, upgradeLevel);
+    }
+
+    public static CharacterStats CreatePlayer(int hpUpgradeLevel, int attackUpgradeLevel)
+    {
+        float upgradedHp = Mathf.Round(GameBalance.PlayerStatAfterUpgrade(GameBalance.PlayerBaseHP, hpUpgradeLevel));
+        float upgradedAtk = Mathf.Round(GameBalance.PlayerStatAfterUpgrade(GameBalance.PlayerBaseATK, attackUpgradeLevel));
+        float hp = EquipmentStatCalculator.ApplyBonus(upgradedHp, EquipmentStatCalculator.GetArmorBonus());
+        float atk = EquipmentStatCalculator.ApplyBonus(upgradedAtk, EquipmentStatCalculator.GetWeaponBonus());
+        float def = Mathf.Round(GameBalance.PlayerBaseDEF);
         return new CharacterStats("P1", "Hero", hp, atk, GameBalance.DefaultAttackSpeed, GameBalance.PlayerMoveSpeed, def);
     }
 

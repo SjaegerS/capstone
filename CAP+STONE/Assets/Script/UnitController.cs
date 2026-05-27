@@ -42,6 +42,28 @@ public class UnitController : MonoBehaviour
         ResetVisuals(spawnPosition);
     }
 
+    public void ApplyStats(CharacterStats stats)
+    {
+        if (stats == null)
+        {
+            return;
+        }
+
+        float hpRatio = 1f;
+        if (Stats != null && Stats.MaxHP > 0f)
+        {
+            hpRatio = Mathf.Clamp01(Stats.CurrentHP / Stats.MaxHP);
+        }
+
+        stats.CurrentHP = Mathf.Clamp(stats.MaxHP * hpRatio, 0f, stats.MaxHP);
+        Stats = stats;
+
+        if (healthBar != null)
+        {
+            healthBar.SetHP(Stats.CurrentHP, Stats.MaxHP);
+        }
+    }
+
     public void Revive(Vector3 spawnPosition)
     {
         StopAllCoroutines();

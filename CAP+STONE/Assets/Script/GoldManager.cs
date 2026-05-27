@@ -21,8 +21,25 @@ public class GoldManager : MonoBehaviour
 
     public void AddGold(int amount)
     {
-        currentGold += amount;
+        currentGold = Mathf.Max(0, currentGold + amount);
         UpdateUI();
+    }
+
+    public bool CanSpendGold(int amount)
+    {
+        return amount >= 0 && currentGold >= amount;
+    }
+
+    public bool TrySpendGold(int amount)
+    {
+        if (!CanSpendGold(amount))
+        {
+            return false;
+        }
+
+        currentGold -= amount;
+        UpdateUI();
+        return true;
     }
 
     void UpdateUI()

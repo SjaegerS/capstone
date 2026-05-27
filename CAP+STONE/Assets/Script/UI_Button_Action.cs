@@ -28,9 +28,15 @@ public class UI_Button_Action : MonoBehaviour
     [SerializeField] public Button WeaponUpgradeButton;
     [SerializeField] public Button ArmorUpgradeButton;
     [SerializeField] public Button CharcterUpgradeButton;
+    [SerializeField] public Button ResetButton;
 
     private void Awake()
     {
+        if (ResetButton == null)
+        {
+            ResetButton = FindSceneButton("ResetButton");
+        }
+
         RegisterButtonEvents();
     }
 
@@ -66,12 +72,14 @@ public class UI_Button_Action : MonoBehaviour
 
     public void ShowWeaponUpgrade()
     {
+        EquipmentInventoryView.RefreshAll();
         SetInventoryView(WeaponScroll, showWeaponButtonUI: true, showSelectButtonUI: true, showCharcterSelectButton: false);
         SelectUpgradeButton(WeaponUpgradeButton);
     }
 
     public void ShowArmorUpgrade()
     {
+        EquipmentInventoryView.RefreshAll();
         SetInventoryView(ArmorScroll, showWeaponButtonUI: true, showSelectButtonUI: true, showCharcterSelectButton: false);
         SelectUpgradeButton(ArmorUpgradeButton);
     }
@@ -80,6 +88,17 @@ public class UI_Button_Action : MonoBehaviour
     {
         SetInventoryView(CharcterUpgradeScroll, showWeaponButtonUI: false, showSelectButtonUI: true, showCharcterSelectButton: true);
         SelectUpgradeButton(CharcterUpgradeButton);
+    }
+
+    public void ResetEquipmentInventory()
+    {
+        EquipmentInventory.ResetAll();
+        EquipmentInventoryView.RefreshAll();
+        BattleManager battleManager = FindFirstObjectByType<BattleManager>();
+        if (battleManager != null)
+        {
+            battleManager.RefreshPlayerStats();
+        }
     }
 
     private void SetMiddleView(GameObject activeView)
@@ -115,6 +134,7 @@ public class UI_Button_Action : MonoBehaviour
         Register(WeaponUpgradeButton, ShowWeaponUpgrade);
         Register(ArmorUpgradeButton, ShowArmorUpgrade);
         Register(CharcterUpgradeButton, ShowCharcterUpgrade);
+        Register(ResetButton, ResetEquipmentInventory);
     }
 
     private static void Register(Button button, UnityEngine.Events.UnityAction action)

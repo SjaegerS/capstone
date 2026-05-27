@@ -85,6 +85,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7946600992105138815}
   - component: {fileID: 7240929414034428673}
+  - component: {fileID: 7507541461892842203}
   m_Layer: 0
   m_Name: Upgrade_Charcter_Prefab
   m_TagString: Untagged
@@ -137,6 +138,26 @@ MonoBehaviour:
   m_FlexibleWidth: -1
   m_FlexibleHeight: -1
   m_LayoutPriority: 1
+--- !u!114 &7507541461892842203
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1204106902250582327}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 57cc94c996c048342803b2582f680c9f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CharcterUpgrade
+  upgradeButton: {fileID: 2126469622123975883}
+  costText: {fileID: 2647823707459122052}
+  battleManager: {fileID: 0}
+  upgradeCount: 0
+  LVText: {fileID: 4496704836182632021}
+  hpText: {fileID: 0}
+  attackText: {fileID: 0}
+  statValueText: {fileID: 1684643467798971168}
 --- !u!1 &1896202983418082034
 GameObject:
   m_ObjectHideFlags: 0
@@ -291,7 +312,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: d651cbc58b9d6430f8b5f6404488f9ed, type: 3}
+  m_Sprite: {fileID: 21300000, guid: 306fdc0f395624f9f869658fab1c4fd1, type: 3}
   m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1
@@ -969,7 +990,7 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 43.95
+  m_fontSize: 44
   m_fontSizeBase: 36
   m_fontWeight: 400
   m_enableAutoSizing: 1

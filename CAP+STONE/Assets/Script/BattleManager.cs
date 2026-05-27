@@ -14,6 +14,8 @@ public class BattleManager : MonoBehaviour
     [Header("Balance")]
     [Tooltip("플레이어 스탯 강화 횟수 (0 = 미강화)")]
     public int playerUpgradeLevel = 0;
+    public int playerHpUpgradeLevel = 0;
+    public int playerAttackUpgradeLevel = 0;
     [Tooltip("시작 스테이지 번호")]
     public int startingStage = 1;
 
@@ -32,6 +34,8 @@ public class BattleManager : MonoBehaviour
 
     void Start()
     {
+        SyncLegacyUpgradeLevel();
+
         UnitController[] sceneUnits = FindObjectsByType<UnitController>( 
             FindObjectsInactive.Exclude, 
             FindObjectsSortMode.None
@@ -44,6 +48,15 @@ public class BattleManager : MonoBehaviour
         StartCoroutine(BattleLoop());
     }
 
+    private void SyncLegacyUpgradeLevel()
+    {
+        if (playerUpgradeLevel > 0 && playerHpUpgradeLevel == 0 && playerAttackUpgradeLevel == 0)
+        {
+            playerHpUpgradeLevel = playerUpgradeLevel;
+            playerAttackUpgradeLevel = playerUpgradeLevel;
+        }
+    }
+
     bool ValidateReferences()
     {
         bool ok = true;
@@ -54,11 +67,55 @@ public class BattleManager : MonoBehaviour
         return ok;
     }
 
+    public void ApplyPlayerUpgradeLevel(int upgradeLevel)
+    {
+        playerUpgradeLevel = Mathf.Max(0, upgradeLevel);
+        playerHpUpgradeLevel = playerUpgradeLevel;
+        playerAttackUpgradeLevel = playerUpgradeLevel;
+
+        ApplyCurrentPlayerStats();
+    }
+
+    public void ApplyPlayerUpgradeLevel(bool isHealthUpgrade, int upgradeLevel)
+    {
+        int safeUpgradeLevel = Mathf.Max(0, upgradeLevel);
+
+        if (isHealthUpgrade)
+        {
+            playerHpUpgradeLevel = safeUpgradeLevel;
+        }
+        else
+        {
+            playerAttackUpgradeLevel = safeUpgradeLevel;
+        }
+
+        playerUpgradeLevel = Mathf.Max(playerHpUpgradeLevel, playerAttackUpgradeLevel);
+        ApplyCurrentPlayerStats();
+    }
+
+    public int GetPlayerUpgradeLevel(bool isHealthUpgrade)
+    {
+        return isHealthUpgrade ? playerHpUpgradeLevel : playerAttackUpgradeLevel;
+    }
+
+    public void RefreshPlayerStats()
+    {
+        ApplyCurrentPlayerStats();
+    }
+
+    private void ApplyCurrentPlayerStats()
+    {
+        if (currentPlayer != null)
+        {
+            currentPlayer.ApplyStats(CharacterStats.CreatePlayer(playerHpUpgradeLevel, playerAttackUpgradeLevel));
+        }
+    }
+
     IEnumerator BattleLoop()
     {
         currentStage = Mathf.Max(1, startingStage);
 
-        var pStats = CharacterStats.CreatePlayer(playerUpgradeLevel);
+        var pStats = CharacterStats.CreatePlayer(playerHpUpgradeLevel, playerAttackUpgradeLevel);
         GameObject pObj = Instantiate(playerPrefab, playerSpawn.position, Quaternion.identity);
         pObj.SetActive(true);
         currentPlayer = pObj.GetComponent<UnitController>();

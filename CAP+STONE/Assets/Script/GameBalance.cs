@@ -42,7 +42,8 @@ public static class GameBalance
     /// </remarks>
     public static float PlayerStatAfterUpgrade(float baseStat, int upgradeLevel)
     {
-        return baseStat + Mathf.Pow(PlayerGrowthRate, upgradeLevel);
+        int n = Mathf.Max(0, upgradeLevel);
+        return baseStat * Mathf.Pow(PlayerGrowthRate, n);
     }
 
     /// <summary>스테이지 n 몬스터 스탯 — base × 1.15^(n-1)</summary>
@@ -70,6 +71,12 @@ public static class GameBalance
     public static float StatUpgradeGoldCost(int upgradeCount)
     {
         return 1000f * Mathf.Pow(UpgradeCostRate, upgradeCount);
+    }
+
+    /// <summary>Character upgrade gold cost: 1000 * 1.17^n.</summary>
+    public static int CharacterUpgradeGoldCost(int upgradeCount)
+    {
+        return Mathf.RoundToInt(StatUpgradeGoldCost(upgradeCount));
     }
 
     /// <summary>스테이지 n 총 보상 — 1000 × 1.14^(n-1)</summary>
