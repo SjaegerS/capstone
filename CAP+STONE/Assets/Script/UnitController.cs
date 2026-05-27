@@ -114,6 +114,8 @@ public class UnitController : MonoBehaviour
         if (Stats == null) yield break;
         float interval = Stats.AttackSpeed > 0f ? 1f / Stats.AttackSpeed : 1f;
 
+        yield return new WaitForSeconds(interval);
+
         while (!isDead && targetUnit != null && !targetUnit.IsDead)
         {
             float dmg = Mathf.Max(1f, GameBalance.CalculateDamage(Stats.AttackDamage, targetUnit.Stats.Defense));
