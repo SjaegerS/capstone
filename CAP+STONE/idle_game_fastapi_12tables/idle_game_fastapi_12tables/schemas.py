@@ -51,12 +51,39 @@ class UserStatusResponse(BaseModel):
     required_exp: int
     current_stage: int
     total_boss_kill_count: int
+
+    max_hp: int
+    attack_power: int
+    defense_power: int
+
+    hp_upgrade_lvl: int
+    attack_upgrade_lvl: int
+    defense_upgrade_lvl: int
+
+
     updated_at: datetime
     current_character: Optional[CharacterInfoResponse] = None
 
     class Config:
         from_attributes = True
 
+class UserStatUpgradeResponse(BaseModel):
+    user_id: int
+    upgrade_type: str
+
+    max_hp: int
+    attack_power: int
+    defense_power: int
+
+    hp_upgrade_lvl: int
+    attack_upgrade_lvl: int
+    defense_upgrade_lvl: int
+
+    gold: int
+    cost_gold: int
+
+    class Config:
+        from_attributes = True
 
 class UserResponse(BaseModel):
     user_id: int
@@ -74,10 +101,6 @@ class CharacterStatusResponse(BaseModel):
     user_id: int
     character_id: int
     character_level: int
-    max_hp: int
-    current_hp: int
-    attack_power: int
-    defense_power: int
     character: Optional[CharacterInfoResponse] = None
 
     class Config:
@@ -86,10 +109,6 @@ class CharacterStatusResponse(BaseModel):
 
 class CharacterStatusUpdate(BaseModel):
     character_level: Optional[int] = None
-    max_hp: Optional[int] = None
-    current_hp: Optional[int] = None
-    attack_power: Optional[int] = None
-    defense_power: Optional[int] = None
 
 
 class CharacterConditionResponse(BaseModel):
@@ -147,7 +166,8 @@ class ItemResponse(BaseModel):
 class UserItemCreate(BaseModel):
     user_id: int
     item_id: int
-    enhance_level: int = Field(default=0, ge=0, le=5)
+    quantity: int = 1
+    enhance_level: int = 0
     is_equipped: bool = False
 
 
@@ -160,6 +180,7 @@ class UserItemResponse(BaseModel):
     user_item_id: int
     user_id: int
     item_id: int
+    quantity: int
     enhance_level: int
     is_equipped: bool
     item: Optional[ItemResponse] = None
@@ -177,11 +198,20 @@ class UserCurrencyResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class SpendCurrencyRequest(BaseModel):
+    amount: int
 
 class UserCurrencyUpdate(BaseModel):
     gold: Optional[int] = None
     gem: Optional[int] = None
 
+
+class BattleRewardRequest(BaseModel):
+    user_id: int
+    stage_id: int
+    reward_gold: int
+    reward_exp: int
+    kill_count_add: int = 1
 
 class PhoneUsageLogCreate(BaseModel):
     user_id: int

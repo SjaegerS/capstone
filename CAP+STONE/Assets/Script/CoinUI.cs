@@ -43,7 +43,6 @@ public class CoinUI : MonoBehaviour
             yield return null;
         }
 
-        GoldManager.Instance?.AddGold(goldValue);
         Destroy(gameObject);
     }
 

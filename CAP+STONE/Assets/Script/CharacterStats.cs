@@ -3,47 +3,124 @@ using UnityEngine;
 [System.Serializable]
 public class CharacterStats
 {
-    public string ID;
-    public string Name;
-    public float MaxHP;
-    public float CurrentHP;
-    public float AttackDamage;
-    public float AttackSpeed;
-    public float MoveSpeed;
-    public float Defense;
+    public string Id { get; private set; }
+    public string DisplayName { get; private set; }
 
-    public CharacterStats(string id, string name, float hp, float dmg, float spd, float move, float def)
+    public float MaxHP { get; private set; }
+
+    // UnitController에서 현재 체력을 직접 읽고 수정하므로 public set 유지
+    public float CurrentHP { get; set; }
+
+    public float AttackDamage { get; private set; }
+    public float Defense { get; private set; }
+    public float AttackSpeed { get; private set; }
+    public float MoveSpeed { get; private set; }
+
+    public CharacterStats(
+        string id,
+        string displayName,
+        float maxHP,
+        float attackDamage,
+        float defense,
+        float attackSpeed,
+        float moveSpeed
+    )
     {
-        ID = id;
-        Name = name;
-        MaxHP = hp;
-        CurrentHP = hp;
-        AttackDamage = dmg;
-        AttackSpeed = spd;
-        MoveSpeed = move;
-        Defense = def;
+        Id = id;
+        DisplayName = displayName;
+
+        MaxHP = maxHP;
+        CurrentHP = maxHP;
+
+        AttackDamage = attackDamage;
+        Defense = defense;
+        AttackSpeed = attackSpeed;
+        MoveSpeed = moveSpeed;
     }
 
-    public static CharacterStats CreatePlayer(int upgradeLevel)
+    public static CharacterStats CreatePlayer(
+        int hpUpgradeLvl,
+        int attackUpgradeLvl
+    )
     {
-        return CreatePlayer(upgradeLevel, upgradeLevel);
+        int safeHpLvl = Mathf.Max(1, hpUpgradeLvl);
+        int safeAttackLvl = Mathf.Max(1, attackUpgradeLvl);
+
+        float maxHP = GameBalance.PlayerBaseHP + GameBalance.TotalStatUpgradeBonus(safeHpLvl);
+        float attackDamage = GameBalance.PlayerBaseATK + GameBalance.TotalStatUpgradeBonus(safeAttackLvl);
+        float defense = GameBalance.PlayerBaseDEF;
+
+        maxHP *= GameBalance.CharacterTypeBonus;
+        maxHP *= GameBalance.EquipOptionBonus;
+        maxHP *= GameBalance.ConditionBonus;
+
+        attackDamage *= GameBalance.CharacterTypeBonus;
+        attackDamage *= GameBalance.EquipOptionBonus;
+        attackDamage *= GameBalance.ConditionBonus;
+
+        defense *= GameBalance.CharacterTypeBonus;
+        defense *= GameBalance.EquipOptionBonus;
+        defense *= GameBalance.ConditionBonus;
+
+        return new CharacterStats(
+            "player",
+            "Player",
+            maxHP,
+            attackDamage,
+            defense,
+            GameBalance.DefaultAttackSpeed,
+            GameBalance.PlayerMoveSpeed
+        );
     }
 
-    public static CharacterStats CreatePlayer(int hpUpgradeLevel, int attackUpgradeLevel)
+    public static CharacterStats CreatePlayerFromDb(
+        float maxHP,
+        float attackPower,
+        float defensePower
+    )
     {
-        float upgradedHp = Mathf.Round(GameBalance.PlayerStatAfterUpgrade(GameBalance.PlayerBaseHP, hpUpgradeLevel));
-        float upgradedAtk = Mathf.Round(GameBalance.PlayerStatAfterUpgrade(GameBalance.PlayerBaseATK, attackUpgradeLevel));
-        float hp = EquipmentStatCalculator.ApplyBonus(upgradedHp, EquipmentStatCalculator.GetArmorBonus());
-        float atk = EquipmentStatCalculator.ApplyBonus(upgradedAtk, EquipmentStatCalculator.GetWeaponBonus());
-        float def = Mathf.Round(GameBalance.PlayerBaseDEF);
-        return new CharacterStats("P1", "Hero", hp, atk, GameBalance.DefaultAttackSpeed, GameBalance.PlayerMoveSpeed, def);
+        return new CharacterStats(
+            "player",
+            "Player",
+            maxHP,
+            attackPower,
+            defensePower,
+            GameBalance.DefaultAttackSpeed,
+            GameBalance.PlayerMoveSpeed
+        );
     }
 
     public static CharacterStats CreateEnemy(int stage)
     {
-        float hp  = Mathf.Round(GameBalance.EnemyStatAtStage(GameBalance.EnemyBaseHP,  stage));
-        float atk = Mathf.Round(GameBalance.EnemyStatAtStage(GameBalance.EnemyBaseATK, stage));
-        float def = Mathf.Round(GameBalance.EnemyStatAtStage(GameBalance.EnemyBaseDEF, stage));
-        return new CharacterStats("E1", "Monster", hp, atk, 1.0f, GameBalance.EnemyMoveSpeed, def);
+        int safeStage = Mathf.Max(1, stage);
+
+        float maxHP = GameBalance.EnemyHP(safeStage);
+        float attackDamage = GameBalance.EnemyAttack(safeStage);
+        float defense = GameBalance.EnemyDefense(safeStage);
+
+        return new CharacterStats(
+            $"enemy_stage_{safeStage}",
+            $"Enemy Stage {safeStage}",
+            maxHP,
+            attackDamage,
+            defense,
+            GameBalance.DefaultAttackSpeed,
+            GameBalance.EnemyMoveSpeed
+        );
+    }
+
+    public void ResetCurrentHP()
+    {
+        CurrentHP = MaxHP;
+    }
+
+    public void TakeDamage(float damage)
+    {
+        CurrentHP = Mathf.Max(0f, CurrentHP - damage);
+    }
+
+    public bool IsDead()
+    {
+        return CurrentHP <= 0f;
     }
 }

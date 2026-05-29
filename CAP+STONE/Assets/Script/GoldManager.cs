@@ -19,6 +19,13 @@ public class GoldManager : MonoBehaviour
 
     void Start() => UpdateUI();
 
+    public void SetGold(long amount)
+    {
+        long safeAmount = System.Math.Max(0L, System.Math.Min(amount, int.MaxValue));
+        currentGold = (int)safeAmount;
+        UpdateUI();
+    }
+
     public void AddGold(int amount)
     {
         currentGold = Mathf.Max(0, currentGold + amount);

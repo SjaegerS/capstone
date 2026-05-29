@@ -1,3 +1,6 @@
+using System;
+using System.Text;
+using UnityEngine.Networking;
 using System.Collections;
 using System.Collections.Generic;
 using TMPro;
@@ -23,6 +26,12 @@ public class GachaChestAnimation : MonoBehaviour
     [SerializeField] private int onePullGemCost = 100;
     [SerializeField] private int elevenPullGemCost = 1000;
     [SerializeField] private int fiftyFivePullGemCost = 5000;
+
+    [Header("API")]
+    [SerializeField] private UserCreateApi userCreateApi;
+    [SerializeField] private string baseUrl = "http://127.0.0.1:8000";
+
+    private ItemDto[] cachedItems;
 
     [Header("Rates")]
     [SerializeField, Range(0f, 1f)] private float normalRate = 0.8f;
@@ -57,6 +66,16 @@ public class GachaChestAnimation : MonoBehaviour
     {
         public Sprite Sprite;
         public EquipmentRarity Rarity;
+
+        public long ItemId;
+        public string ItemName;
+        public string ItemType;
+        public string Grade;
+
+        public long UserItemId;
+        public int EnhanceLevel;
+        public int Quantity;
+        public bool IsEquipped;
     }
 
     private bool isPlaying;
@@ -66,9 +85,20 @@ public class GachaChestAnimation : MonoBehaviour
     private readonly Dictionary<Button, UnityAction> buttonListeners = new Dictionary<Button, UnityAction>();
     private GameObject overlayObject;
 
+    #region Unity Lifecycle
+
     private void Awake()
     {
-        AutoBindGemText();
+        if (userCreateApi == null)
+        {
+            userCreateApi = FindFirstObjectByType<UserCreateApi>();
+
+            if (userCreateApi == null)
+            {
+                Debug.LogError("씬에서 UserCreateApi를 찾을 수 없습니다. ApiManager에 UserCreateApi가 붙어 있는지 확인하세요.");
+            }
+        }
+
         gachaButtons = GetComponentsInChildren<Button>(true);
 
         foreach (Button button in gachaButtons)
@@ -83,6 +113,7 @@ public class GachaChestAnimation : MonoBehaviour
     private void Start()
     {
         EquipmentInventoryView.RefreshAll();
+        StartCoroutine(LoadCurrencyWhenUserReady());
     }
 
     private void OnDestroy()
@@ -110,6 +141,10 @@ public class GachaChestAnimation : MonoBehaviour
         CleanupPlayback();
     }
 
+    #endregion
+
+    #region Public Entry Points
+
     public void Play()
     {
         Play(1);
@@ -122,24 +157,90 @@ public class GachaChestAnimation : MonoBehaviour
             return;
         }
 
-        int safePullCount = Mathf.Max(1, pullCount);
-        if (!TrySpendGems(GetGemCost(safePullCount)))
+        if (userCreateApi == null)
         {
+            Debug.LogError("UserCreateApi가 연결되지 않았습니다.");
             return;
         }
 
-        StartCoroutine(PlayRoutine(safePullCount));
+        if (userCreateApi.CurrentUserId <= 0)
+        {
+            Debug.LogError("생성된 유저 ID가 없습니다.");
+            return;
+        }
+
+        int safePullCount = Mathf.Max(1, pullCount);
+
+        StartCoroutine(SpendGemsThenPlay(safePullCount));
+    }
+
+    #endregion
+
+    #region Gacha Flow
+
+    private IEnumerator SpendGemsThenPlay(int pullCount)
+    {
+        if (isPlaying)
+        {
+            yield break;
+        }
+
+        isPlaying = true;
+        skipRequested = false;
+        SetButtonsInteractable(false);
+
+        int cost = GetGemCost(pullCount);
+
+        string url = $"{baseUrl}/users/{userCreateApi.CurrentUserId}/currency/spend-gem/";
+
+        SpendCurrencyRequest requestBody = new SpendCurrencyRequest
+        {
+            amount = cost
+        };
+
+        string json = JsonUtility.ToJson(requestBody);
+
+        UnityWebRequest request = new UnityWebRequest(url, "PATCH");
+        request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
+        request.downloadHandler = new DownloadHandlerBuffer();
+        request.SetRequestHeader("Content-Type", "application/json");
+
+        yield return request.SendWebRequest();
+
+        if (request.result != UnityWebRequest.Result.Success)
+        {
+            Debug.LogError("gem 차감 실패");
+            Debug.LogError($"HTTP Code: {request.responseCode}");
+            Debug.LogError($"Response: {request.downloadHandler.text}");
+
+            SetButtonsInteractable(true);
+            isPlaying = false;
+            yield break;
+        }
+
+        CurrencyResponse response = JsonUtility.FromJson<CurrencyResponse>(request.downloadHandler.text);
+
+        if (response != null && CurrencyUIManager.Instance != null)
+        {
+            CurrencyUIManager.Instance.SetGem(response.gem);
+        }
+
+        yield return StartCoroutine(PlayRoutine(pullCount));
     }
 
     private IEnumerator PlayRoutine(int pullCount)
     {
-        isPlaying = true;
-        skipRequested = false;
-        SetButtonsInteractable(false);
+        yield return StartCoroutine(LoadItemsIfNeeded());
+
         GachaResult[] results = RollResults(pullCount);
-        AddResultsToInventory(results);
+
+        yield return StartCoroutine(SaveResultsToDb(results));
+
+        yield return StartCoroutine(SyncUserItemsFromDb());
+
         EquipmentInventoryView.RefreshAll();
         RefreshBattlePlayerStats();
+
         lightColor = GetLightColor(GetHighestRarity(results));
 
         previousTimeScale = Time.timeScale;
@@ -176,6 +277,548 @@ public class GachaChestAnimation : MonoBehaviour
         SetButtonsInteractable(true);
         isPlaying = false;
     }
+
+    private GachaResult[] RollResults(int pullCount)
+    {
+        GachaResult[] results = new GachaResult[pullCount];
+
+        for (int i = 0; i < results.Length; i++)
+        {
+            EquipmentRarity rarity = RollRarity();
+            ItemDto selectedItem = PickItemByRarity(rarity);
+
+            Sprite matchedSprite = selectedItem != null
+            ? FindSpriteByItem(selectedItem, rarity)
+            : PickEquipmentSprite(rarity);
+
+            results[i] = new GachaResult
+            {
+                Rarity = rarity,
+                Sprite = matchedSprite,
+                ItemId = selectedItem != null ? selectedItem.item_id : 0,
+                ItemName = selectedItem != null ? selectedItem.item_name : "",
+                ItemType = selectedItem != null ? selectedItem.item_type : "",
+                Grade = selectedItem != null ? selectedItem.grade : "",
+                UserItemId = 0,
+                EnhanceLevel = 0,
+                Quantity = 0,
+                IsEquipped = false
+            };
+        }
+
+        return results;
+    }
+
+    private EquipmentRarity RollRarity()
+    {
+        float roll = UnityEngine.Random.value;
+
+        if (roll < normalRate)
+        {
+            return EquipmentRarity.Normal;
+        }
+
+        if (roll < normalRate + rareRate)
+        {
+            return EquipmentRarity.Rare;
+        }
+
+        return EquipmentRarity.SuperRare;
+    }
+
+    private IEnumerator SaveResultsToDb(GachaResult[] results)
+    {
+        for (int i = 0; i < results.Length; i++)
+        {
+
+            if (results[i].ItemId <= 0)
+            {
+                Debug.LogError("[Gacha] item_id is 0. Skipping user_item save.");
+                continue;
+            }
+
+            UserItemResponse savedItem = null;
+
+            yield return StartCoroutine(CreateUserItem(results[i].ItemId, response =>
+            {
+                savedItem = response;
+            }));
+
+            if (savedItem == null)
+            {
+                Debug.LogError($"[Gacha] savedItem이 null입니다. index={i}");
+                continue;
+            }
+
+            results[i].UserItemId = savedItem.user_item_id;
+            results[i].EnhanceLevel = savedItem.enhance_level;
+            results[i].IsEquipped = savedItem.is_equipped;
+            results[i].Quantity = savedItem.quantity;
+
+            // 중요: 서버가 반환한 item_id로 다시 맞춤
+            results[i].ItemId = savedItem.item_id;
+        }
+    }
+
+    private IEnumerator CreateUserItem(long itemId, Action<UserItemResponse> onSuccess)
+    {
+        string url = $"{baseUrl}/user-items/";
+
+        UserItemCreateRequest requestBody = new UserItemCreateRequest
+        {
+            user_id = userCreateApi.CurrentUserId,
+            item_id = itemId,
+
+            // 뽑기로 새로 얻는 장비 기본값
+            enhance_level = 1,
+            is_equipped = false,
+
+            // 이번에 획득한 개수만 전송
+            quantity = 1
+        };
+
+        string json = JsonUtility.ToJson(requestBody);
+
+        UnityWebRequest request = new UnityWebRequest(url, "POST");
+        request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
+        request.downloadHandler = new DownloadHandlerBuffer();
+        request.SetRequestHeader("Content-Type", "application/json");
+
+        yield return request.SendWebRequest();
+
+        if (request.result != UnityWebRequest.Result.Success)
+        {
+            Debug.LogError("Failed to save user_item.");
+            Debug.LogError($"HTTP Code: {request.responseCode}");
+            Debug.LogError($"Error: {request.error}");
+            Debug.LogError($"Response: {request.downloadHandler.text}");
+            yield break;
+        }
+
+        UserItemResponse response = JsonUtility.FromJson<UserItemResponse>(request.downloadHandler.text);
+
+        onSuccess?.Invoke(response);
+    }
+
+    #endregion
+
+    #region Currency
+
+    private IEnumerator LoadCurrencyWhenUserReady()
+    {
+        float timeout = 5f;
+        float elapsed = 0f;
+
+        while ((userCreateApi == null || userCreateApi.CurrentUserId <= 0) && elapsed < timeout)
+        {
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+
+        if (userCreateApi == null || userCreateApi.CurrentUserId <= 0)
+        {
+            Debug.LogWarning("유저 ID가 준비되지 않아 currency를 불러오지 못했습니다.");
+            yield break;
+        }
+
+        yield return StartCoroutine(LoadCurrencyFromDb());
+    }
+
+    private IEnumerator LoadCurrencyFromDb()
+    {
+        string url = $"{baseUrl}/users/{userCreateApi.CurrentUserId}/currency/";
+
+        UnityWebRequest request = UnityWebRequest.Get(url);
+
+        yield return request.SendWebRequest();
+
+        if (request.result != UnityWebRequest.Result.Success)
+        {
+            Debug.LogError("currency 조회 실패");
+            Debug.LogError($"HTTP Code: {request.responseCode}");
+            Debug.LogError($"Response: {request.downloadHandler.text}");
+            yield break;
+        }
+
+        CurrencyResponse response = JsonUtility.FromJson<CurrencyResponse>(request.downloadHandler.text);
+
+        if (response != null)
+        {
+            SetGemAmount(response.gem);
+        }
+    }
+
+    private void SetGemAmount(long amount)
+    {
+        if (gemText == null)
+        {
+            return;
+        }
+
+        gemText.textWrappingMode = TextWrappingModes.NoWrap;
+        gemText.overflowMode = TextOverflowModes.Overflow;
+        gemText.alignment = TextAlignmentOptions.Center;
+        gemText.text = Math.Max(0L, amount).ToString();
+
+    }
+
+    private int GetGemCost(int pullCount)
+    {
+        if (pullCount >= 55)
+        {
+            return fiftyFivePullGemCost;
+        }
+
+        if (pullCount >= 11)
+        {
+            return elevenPullGemCost;
+        }
+
+        return onePullGemCost;
+    }
+
+    #endregion
+
+    #region Item Cache and Mapping
+
+    private IEnumerator LoadItemsIfNeeded()
+    {
+        if (cachedItems != null && cachedItems.Length > 0)
+        {
+            yield break;
+        }
+
+        string url = $"{baseUrl}/items/";
+
+        UnityWebRequest request = UnityWebRequest.Get(url);
+
+        yield return request.SendWebRequest();
+
+        if (request.result != UnityWebRequest.Result.Success)
+        {
+            Debug.LogError("아이템 목록 조회 실패");
+            Debug.LogError($"HTTP Code: {request.responseCode}");
+            Debug.LogError($"Error: {request.error}");
+            Debug.LogError($"Response: {request.downloadHandler.text}");
+            yield break;
+        }
+
+        string wrappedJson = "{\"items\":" + request.downloadHandler.text + "}";
+        ItemListResponse response = JsonUtility.FromJson<ItemListResponse>(wrappedJson);
+
+        cachedItems = response.items;
+    }
+
+    private ItemDto PickItemByRarity(EquipmentRarity rarity)
+    {
+        if (cachedItems == null || cachedItems.Length == 0)
+        {
+            Debug.LogError("cachedItems가 비어 있습니다.");
+            return null;
+        }
+
+        string grade = ToDbGrade(rarity);
+
+        List<ItemDto> candidates = new List<ItemDto>();
+
+        foreach (ItemDto item in cachedItems)
+        {
+            if (item != null && item.grade == grade)
+            {
+                candidates.Add(item);
+            }
+        }
+
+        if (candidates.Count == 0)
+        {
+            Debug.LogError($"등급에 맞는 아이템이 없습니다. grade={grade}");
+            return cachedItems[UnityEngine.Random.Range(0, cachedItems.Length)];
+        }
+
+        return candidates[UnityEngine.Random.Range(0, candidates.Count)];
+    }
+
+    private IEnumerator SyncUserItemsFromDb()
+    {
+        if (userCreateApi == null || userCreateApi.CurrentUserId <= 0)
+        {
+            yield break;
+        }
+
+        string url = $"{baseUrl}/users/{userCreateApi.CurrentUserId}/items/";
+
+        UnityWebRequest request = UnityWebRequest.Get(url);
+
+        yield return request.SendWebRequest();
+
+        if (request.result != UnityWebRequest.Result.Success)
+        {
+            Debug.LogError("user_item 목록 동기화 실패");
+            Debug.LogError($"HTTP Code: {request.responseCode}");
+            Debug.LogError($"Response: {request.downloadHandler.text}");
+            yield break;
+        }
+
+        string wrappedJson = "{\"items\":" + request.downloadHandler.text + "}";
+        UserItemListResponse response = JsonUtility.FromJson<UserItemListResponse>(wrappedJson);
+
+        if (response == null || response.items == null)
+        {
+            yield break;
+        }
+
+        EquipmentInventory.ResetAll();
+
+        foreach (UserItemResponse userItem in response.items)
+        {
+            ItemDto item = FindCachedItemById(userItem.item_id);
+
+            if (item == null)
+            {
+                continue;
+            }
+
+            EquipmentRarity rarity = ToEquipmentRarity(item.grade);
+            Sprite sprite = FindSpriteByItem(item, rarity);
+
+            if (sprite == null)
+            {
+                continue;
+            }
+
+            EquipmentInventory.ApplyServerUserItem(
+            sprite,
+            (int)userItem.user_item_id,
+            (int)userItem.item_id,
+            userItem.quantity,
+            userItem.enhance_level
+            );
+
+            EquipmentInventoryRecord record = EquipmentInventory.GetRecord(sprite);
+            record.SetMetadata(
+            GetInventoryCategoryFromItemType(item.item_type, sprite),
+            ToInventoryRarity(rarity)
+            );
+        }
+
+        PlayerPrefs.Save();
+    }
+
+    private ItemDto FindCachedItemById(long itemId)
+    {
+        if (cachedItems == null)
+        {
+            return null;
+        }
+
+        foreach (ItemDto item in cachedItems)
+        {
+            if (item != null && item.item_id == itemId)
+            {
+                return item;
+            }
+        }
+
+        return null;
+    }
+
+    private Sprite FindSpriteByItem(ItemDto item, EquipmentRarity rarity)
+    {
+        if (item == null)
+        {
+            return PickEquipmentSprite(rarity);
+        }
+
+        Sprite[] pool = GetPool(rarity);
+
+        string imageKey = item.image_key;
+        string itemKey = item.item_key;
+        string itemName = item.item_name;
+
+        foreach (Sprite sprite in pool)
+        {
+            if (sprite == null)
+            {
+                continue;
+            }
+
+            if (!string.IsNullOrEmpty(imageKey) && sprite.name == imageKey)
+            {
+                return sprite;
+            }
+
+            if (!string.IsNullOrEmpty(itemKey) && sprite.name == itemKey)
+            {
+                return sprite;
+            }
+
+            if (!string.IsNullOrEmpty(itemName) && sprite.name == itemName)
+            {
+                return sprite;
+            }
+        }
+
+        Debug.LogWarning(
+        $"Sprite 매칭 실패: item_id={item.item_id}, " +
+        $"item_key={item.item_key}, image_key={item.image_key}, item_name={item.item_name}. " +
+        "등급 풀에서 임시 스프라이트를 사용합니다."
+        );
+
+        return PickEquipmentSprite(rarity);
+    }
+
+    private Sprite PickEquipmentSprite(EquipmentRarity rarity)
+    {
+        Sprite[] pool = GetPool(rarity);
+
+        if (pool.Length == 0)
+        {
+            pool = GetPool(EquipmentRarity.Normal);
+        }
+
+        if (pool.Length == 0)
+        {
+            return null;
+        }
+
+        Sprite selected = pool[UnityEngine.Random.Range(0, pool.Length)];
+
+        return selected;
+    }
+
+    private Sprite PickFirstAvailableEquipmentSprite()
+    {
+        Sprite[][] pools =
+        {
+            normalEquipmentSprites,
+            rareEquipmentSprites,
+            superRareEquipmentSprites
+        };
+
+        foreach (Sprite[] pool in pools)
+        {
+            if (pool != null && pool.Length > 0)
+            {
+                return pool[0];
+            }
+        }
+
+        return null;
+    }
+
+    private Sprite[] GetPool(EquipmentRarity rarity)
+    {
+        switch (rarity)
+        {
+            case EquipmentRarity.SuperRare:
+            return superRareEquipmentSprites ?? new Sprite[0];
+            case EquipmentRarity.Rare:
+            return rareEquipmentSprites ?? new Sprite[0];
+            default:
+            return normalEquipmentSprites ?? new Sprite[0];
+        }
+    }
+
+    private Sprite EnsureResultSprite(GachaResult result)
+    {
+        if (result.Sprite != null)
+        {
+            return result.Sprite;
+        }
+
+        Sprite fallback = PickEquipmentSprite(result.Rarity);
+        if (fallback != null)
+        {
+            return fallback;
+        }
+
+        fallback = PickFirstAvailableEquipmentSprite();
+        return fallback != null ? fallback : defaultEquipmentSprite;
+    }
+
+    private string ToDbGrade(EquipmentRarity rarity)
+    {
+        switch (rarity)
+        {
+            case EquipmentRarity.SuperRare:
+            return "SUPER_RARE";
+            case EquipmentRarity.Rare:
+            return "RARE";
+            default:
+            return "NORMAL";
+        }
+    }
+
+    private EquipmentRarity ToEquipmentRarity(string grade)
+    {
+        switch (grade)
+        {
+            case "SUPER_RARE":
+            return EquipmentRarity.SuperRare;
+
+            case "RARE":
+            return EquipmentRarity.Rare;
+
+            default:
+            return EquipmentRarity.Normal;
+        }
+    }
+
+    private EquipmentRarityGrade ToInventoryRarity(EquipmentRarity rarity)
+    {
+        switch (rarity)
+        {
+            case EquipmentRarity.SuperRare:
+            return EquipmentRarityGrade.SuperRare;
+            case EquipmentRarity.Rare:
+            return EquipmentRarityGrade.Rare;
+            default:
+            return EquipmentRarityGrade.Normal;
+        }
+    }
+
+    private EquipmentCategory GetInventoryCategoryFromItemType(string itemType, Sprite sprite)
+    {
+        if (!string.IsNullOrEmpty(itemType))
+        {
+            string lowerType = itemType.ToLowerInvariant();
+
+            if (lowerType.Contains("weapon") || lowerType.Contains("무기"))
+            {
+                return EquipmentCategory.Weapon;
+            }
+
+            if (lowerType.Contains("armor") || lowerType.Contains("방어구"))
+            {
+                return EquipmentCategory.Armor;
+            }
+        }
+
+        if (sprite != null)
+        {
+            string lowerName = sprite.name.ToLowerInvariant();
+
+            if (lowerName.Contains("wp") ||
+            lowerName.Contains("weapon") ||
+            lowerName.Contains("sword") ||
+            lowerName.Contains("axe") ||
+            lowerName.Contains("bow") ||
+            lowerName.Contains("spear") ||
+            lowerName.Contains("staff") ||
+            lowerName.Contains("blunt") ||
+            lowerName.Contains("fist") ||
+            lowerName.Contains("sickle"))
+            {
+                return EquipmentCategory.Weapon;
+            }
+        }
+
+        return EquipmentCategory.Armor;
+    }
+
+    #endregion
+
+    #region Result Overlay UI
 
     private RectTransform CreateOverlay()
     {
@@ -276,23 +919,6 @@ public class GachaChestAnimation : MonoBehaviour
         return slot;
     }
 
-    private Sprite EnsureResultSprite(GachaResult result)
-    {
-        if (result.Sprite != null)
-        {
-            return result.Sprite;
-        }
-
-        Sprite fallback = PickEquipmentSprite(result.Rarity);
-        if (fallback != null)
-        {
-            return fallback;
-        }
-
-        fallback = PickFirstAvailableEquipmentSprite();
-        return fallback != null ? fallback : defaultEquipmentSprite;
-    }
-
     private void ShowRemainingResults(Transform parent, GachaResult[] results, int startIndex, float cellSize)
     {
         for (int i = startIndex; i < results.Length; i++)
@@ -347,11 +973,11 @@ public class GachaChestAnimation : MonoBehaviour
         switch (rarity)
         {
             case EquipmentRarity.SuperRare:
-                return new Color(1f, 0.12f, 0.08f, 0.82f);
+            return new Color(1f, 0.12f, 0.08f, 0.82f);
             case EquipmentRarity.Rare:
-                return new Color(0.1f, 0.85f, 0.28f, 0.82f);
+            return new Color(0.1f, 0.85f, 0.28f, 0.82f);
             default:
-                return new Color(1f, 1f, 1f, 0.78f);
+            return new Color(1f, 1f, 1f, 0.78f);
         }
     }
 
@@ -411,6 +1037,10 @@ public class GachaChestAnimation : MonoBehaviour
 
         return rect;
     }
+
+    #endregion
+
+    #region Animation
 
     private IEnumerator ShakeChest(RectTransform chestRoot)
     {
@@ -517,120 +1147,6 @@ public class GachaChestAnimation : MonoBehaviour
         }
     }
 
-    private GachaResult[] RollResults(int pullCount)
-    {
-        GachaResult[] results = new GachaResult[pullCount];
-
-        for (int i = 0; i < results.Length; i++)
-        {
-            EquipmentRarity rarity = RollRarity();
-            results[i] = new GachaResult
-            {
-                Rarity = rarity,
-                Sprite = PickEquipmentSprite(rarity)
-            };
-        }
-
-        return results;
-    }
-
-    private void AddResultsToInventory(GachaResult[] results)
-    {
-        foreach (GachaResult result in results)
-        {
-            EquipmentInventory.Add(EnsureResultSprite(result), ToInventoryRarity(result.Rarity));
-        }
-    }
-
-    private EquipmentRarityGrade ToInventoryRarity(EquipmentRarity rarity)
-    {
-        switch (rarity)
-        {
-            case EquipmentRarity.SuperRare:
-                return EquipmentRarityGrade.SuperRare;
-            case EquipmentRarity.Rare:
-                return EquipmentRarityGrade.Rare;
-            default:
-                return EquipmentRarityGrade.Normal;
-        }
-    }
-
-    private void RefreshBattlePlayerStats()
-    {
-        BattleManager battleManager = FindFirstObjectByType<BattleManager>();
-        if (battleManager != null)
-        {
-            battleManager.RefreshPlayerStats();
-        }
-    }
-
-    private EquipmentRarity RollRarity()
-    {
-        float roll = Random.value;
-
-        if (roll < normalRate)
-        {
-            return EquipmentRarity.Normal;
-        }
-
-        if (roll < normalRate + rareRate)
-        {
-            return EquipmentRarity.Rare;
-        }
-
-        return EquipmentRarity.SuperRare;
-    }
-
-    private Sprite PickEquipmentSprite(EquipmentRarity rarity)
-    {
-        Sprite[] pool = GetPool(rarity);
-
-        if (pool.Length == 0)
-        {
-            pool = GetPool(EquipmentRarity.Normal);
-        }
-
-        if (pool.Length == 0)
-        {
-            return null;
-        }
-
-        return pool[Random.Range(0, pool.Length)];
-    }
-
-    private Sprite PickFirstAvailableEquipmentSprite()
-    {
-        Sprite[][] pools =
-        {
-            normalEquipmentSprites,
-            rareEquipmentSprites,
-            superRareEquipmentSprites
-        };
-
-        foreach (Sprite[] pool in pools)
-        {
-            if (pool != null && pool.Length > 0)
-            {
-                return pool[0];
-            }
-        }
-
-        return null;
-    }
-
-    private Sprite[] GetPool(EquipmentRarity rarity)
-    {
-        switch (rarity)
-        {
-            case EquipmentRarity.SuperRare:
-                return superRareEquipmentSprites ?? new Sprite[0];
-            case EquipmentRarity.Rare:
-                return rareEquipmentSprites ?? new Sprite[0];
-            default:
-                return normalEquipmentSprites ?? new Sprite[0];
-        }
-    }
-
     private EquipmentRarity GetHighestRarity(GachaResult[] results)
     {
         EquipmentRarity highest = EquipmentRarity.Normal;
@@ -651,135 +1167,24 @@ public class GachaChestAnimation : MonoBehaviour
         switch (rarity)
         {
             case EquipmentRarity.SuperRare:
-                return superRareLightColor;
+            return superRareLightColor;
             case EquipmentRarity.Rare:
-                return rareLightColor;
+            return rareLightColor;
             default:
-                return normalLightColor;
+            return normalLightColor;
         }
     }
 
-    private int GetGemCost(int pullCount)
+    private float EaseOutBack(float t)
     {
-        if (pullCount >= 55)
-        {
-            return fiftyFivePullGemCost;
-        }
-
-        if (pullCount >= 11)
-        {
-            return elevenPullGemCost;
-        }
-
-        return onePullGemCost;
+        const float c1 = 1.70158f;
+        const float c3 = c1 + 1f;
+        return 1f + c3 * Mathf.Pow(t - 1f, 3f) + c1 * Mathf.Pow(t - 1f, 2f);
     }
 
-    private bool TrySpendGems(int cost)
-    {
-        AutoBindGemText();
-        if (gemText == null)
-        {
-            Debug.LogWarning("GemUI text was not found. Gacha cannot spend gems.");
-            return false;
-        }
+    #endregion
 
-        int currentGems = GetGemAmount();
-        if (currentGems < cost)
-        {
-            Debug.Log("Not enough gems for gacha.");
-            return false;
-        }
-
-        SetGemAmount(currentGems - cost);
-        return true;
-    }
-
-    private int GetGemAmount()
-    {
-        if (gemText == null)
-        {
-            return 0;
-        }
-
-        string digits = string.Empty;
-        bool isInsideTag = false;
-        foreach (char character in gemText.text)
-        {
-            if (character == '<')
-            {
-                isInsideTag = true;
-                continue;
-            }
-
-            if (character == '>')
-            {
-                isInsideTag = false;
-                continue;
-            }
-
-            if (!isInsideTag && char.IsDigit(character))
-            {
-                digits += character;
-            }
-        }
-
-        if (int.TryParse(digits, out int amount))
-        {
-            return amount;
-        }
-
-        return 0;
-    }
-
-    private void SetGemAmount(int amount)
-    {
-        if (gemText != null)
-        {
-            gemText.text = Mathf.Max(0, amount).ToString();
-        }
-    }
-
-    private void AutoBindGemText()
-    {
-        if (gemText != null)
-        {
-            return;
-        }
-
-        TextMeshProUGUI[] texts = FindObjectsOfType<TextMeshProUGUI>(true);
-        foreach (TextMeshProUGUI text in texts)
-        {
-            if (text != null && HasNameInHierarchy(text.transform, "GemUI"))
-            {
-                gemText = text;
-                return;
-            }
-        }
-
-        foreach (TextMeshProUGUI text in texts)
-        {
-            if (text != null && HasNameInHierarchy(text.transform, "Gem"))
-            {
-                gemText = text;
-                return;
-            }
-        }
-    }
-
-    private bool HasNameInHierarchy(Transform target, string namePart)
-    {
-        while (target != null)
-        {
-            if (target.name.Contains(namePart))
-            {
-                return true;
-            }
-
-            target = target.parent;
-        }
-
-        return false;
-    }
+    #region Buttons and Cleanup
 
     private int GetPullCount(Button button)
     {
@@ -832,13 +1237,6 @@ public class GachaChestAnimation : MonoBehaviour
         }
     }
 
-    private float EaseOutBack(float t)
-    {
-        const float c1 = 1.70158f;
-        const float c3 = c1 + 1f;
-        return 1f + c3 * Mathf.Pow(t - 1f, 3f) + c1 * Mathf.Pow(t - 1f, 2f);
-    }
-
     private void CleanupPlayback()
     {
         if (!isPlaying)
@@ -858,4 +1256,80 @@ public class GachaChestAnimation : MonoBehaviour
         SetButtonsInteractable(true);
         isPlaying = false;
     }
+
+    private void RefreshBattlePlayerStats()
+    {
+        BattleManager battleManager = FindFirstObjectByType<BattleManager>();
+        if (battleManager != null)
+        {
+            battleManager.RefreshPlayerStats();
+        }
+    }
+
+    #endregion
+
+    #region DTO
+
+    [Serializable]
+    private class ItemListResponse
+    {
+        public ItemDto[] items;
+    }
+
+    [Serializable]
+    private class ItemDto
+    {
+        public long item_id;
+        public string item_key;
+        public string item_name;
+        public string item_type;
+        public string grade;
+        public string image_key;
+        public int base_attack;
+        public int base_defense;
+    }
+
+    [Serializable]
+    private class UserItemListResponse
+    {
+        public UserItemResponse[] items;
+    }
+
+    [Serializable]
+    private class UserItemCreateRequest
+    {
+        public long user_id;
+        public long item_id;
+        public int enhance_level;
+        public bool is_equipped;
+        public int quantity;
+    }
+
+    [Serializable]
+    private class UserItemResponse
+    {
+        public long user_item_id;
+        public long user_id;
+        public long item_id;
+        public int enhance_level;
+        public bool is_equipped;
+        public int quantity;
+    }
+
+    [Serializable]
+    private class SpendCurrencyRequest
+    {
+        public int amount;
+    }
+
+    [Serializable]
+    private class CurrencyResponse
+    {
+        public long user_id;
+        public long gold;
+        public long gem;
+        public string updated_at;
+    }
+
+    #endregion
 }

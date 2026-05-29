@@ -3,18 +3,21 @@ import os
 from datetime import date, timedelta
 from typing import List
 
+from pydantic import BaseModel
 from fastapi import Depends, FastAPI, HTTPException, status
+from routes import battle
 from google import genai
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
+from datetime import datetime
 
 import models
 import schemas
 from database import get_db
 
 app = FastAPI(title="Idle Game API")
-
+app.include_router(battle.router)
 
 def get_or_404(db: Session, model, condition, detail: str):
     obj = db.query(model).filter(condition).first()
@@ -51,6 +54,53 @@ def calculate_equipment_attack(base_attack: int, enhance_level: int) -> int:
 
 def calculate_equipment_defense(base_defense: int, enhance_level: int) -> int:
     return base_defense + int(base_defense * 0.1 * enhance_level)
+
+PLAYER_BASE_HP = 100
+PLAYER_BASE_ATTACK = 20
+PLAYER_BASE_DEFENSE = 20
+
+STAT_UPGRADE_COST_BASE = 1000
+STAT_UPGRADE_COST_RATE = 1.17
+
+STAT_UPGRADE_AMOUNT_BASE = 1
+STAT_UPGRADE_AMOUNT_RATE = 1.13
+
+def calculate_user_stat_upgrade_cost(upgrade_lvl: int) -> int:
+    """
+    스탯 강화 필요 골드:
+    기본 1000 × 1.17^n
+
+    현재 DB 구조상 upgrade_lvl 기본값이 1이므로
+    Lv.1 -> Lv.2 강화 비용 = 1000 × 1.17^0
+    """
+    upgrade_lvl = max(1, upgrade_lvl)
+    n = upgrade_lvl - 1
+    return int(STAT_UPGRADE_COST_BASE * (STAT_UPGRADE_COST_RATE ** n))
+
+
+def calculate_stat_upgrade_amount(upgrade_lvl: int) -> int:
+    """
+    스탯 강화 증가량:
+    1 × 1.13^n
+
+    정수 스탯이므로 최소 1 보장.
+    Lv.1 -> Lv.2 증가량 = 1
+    """
+    upgrade_lvl = max(1, upgrade_lvl)
+    n = upgrade_lvl - 1
+    return max(1, int(STAT_UPGRADE_AMOUNT_BASE * (STAT_UPGRADE_AMOUNT_RATE ** n)))
+
+
+def calculate_hp_upgrade_amount(upgrade_lvl: int) -> int:
+    return calculate_stat_upgrade_amount(upgrade_lvl)
+
+
+def calculate_attack_upgrade_amount(upgrade_lvl: int) -> int:
+    return calculate_stat_upgrade_amount(upgrade_lvl)
+
+
+def calculate_defense_upgrade_amount(upgrade_lvl: int) -> int:
+    return calculate_stat_upgrade_amount(upgrade_lvl)
 
 
 def decide_condition_result(
@@ -279,11 +329,21 @@ def create_user(user_data: schemas.UserCreate, db: Session = Depends(get_db)):
             models.UserStatus(
                 user_id=user.user_id,
                 current_character_id=default_character.character_id,
+
                 player_level=1,
                 player_exp=0,
                 required_exp=100,
+
                 current_stage=1,
                 total_boss_kill_count=0,
+
+                max_hp=100,
+                attack_power=20,
+                defense_power=20,
+
+                hp_upgrade_lvl=1,
+                attack_upgrade_lvl=1,
+                defense_upgrade_lvl=1,
             )
         )
 
@@ -291,7 +351,7 @@ def create_user(user_data: schemas.UserCreate, db: Session = Depends(get_db)):
             models.UserCurrency(
                 user_id=user.user_id,
                 gold=0,
-                gem=0,
+                gem=9999999999,
             )
         )
 
@@ -304,10 +364,6 @@ def create_user(user_data: schemas.UserCreate, db: Session = Depends(get_db)):
                     user_id=user.user_id,
                     character_id=character.character_id,
                     character_level=1,
-                    max_hp=100,
-                    current_hp=100,
-                    attack_power=10,
-                    defense_power=5,
                 )
             )
 
@@ -564,13 +620,23 @@ def create_user_item(
         "아이템을 찾을 수 없습니다.",
     )
 
+    existing_user_item = db.query(models.UserItem).filter(
+        models.UserItem.user_id == user_item_data.user_id,
+        models.UserItem.item_id == user_item_data.item_id,
+    ).first()
+
+    if existing_user_item:
+        existing_user_item.quantity += user_item_data.quantity
+        db.commit()
+        db.refresh(existing_user_item)
+        return existing_user_item
+
     user_item = models.UserItem(**user_item_data.model_dump())
 
     db.add(user_item)
     db.commit()
     db.refresh(user_item)
     return user_item
-
 
 @app.get(
     "/users/{user_id}/items/",
@@ -607,6 +673,210 @@ def update_user_item(
     return user_item
 
 
+
+@app.patch("/users/{user_id}/currency/spend-gold/")
+def spend_gold(
+    user_id: int,
+    request: schemas.SpendCurrencyRequest,
+    db: Session = Depends(get_db),
+):
+    if request.amount <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="차감할 gold 수량이 올바르지 않습니다.",
+        )
+
+    currency = get_or_404(
+        db,
+        models.UserCurrency,
+        models.UserCurrency.user_id == user_id,
+        "재화 정보를 찾을 수 없습니다.",
+    )
+
+    if currency.gold < request.amount:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="gold가 부족합니다.",
+        )
+
+    currency.gold -= request.amount
+    currency.updated_at = datetime.now()
+
+    db.commit()
+    db.refresh(currency)
+
+    return {
+        "user_id": user_id,
+        "gold": currency.gold,
+        "gem": currency.gem,
+        "updated_at": currency.updated_at,
+    }
+
+@app.patch("/users/{user_id}/currency/spend-gem/")
+def spend_gem(
+    user_id: int,
+    request: schemas.SpendCurrencyRequest,
+    db: Session = Depends(get_db),
+):
+    if request.amount <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="차감할 gem 수량이 올바르지 않습니다.",
+        )
+
+    currency = get_or_404(
+        db,
+        models.UserCurrency,
+        models.UserCurrency.user_id == user_id,
+        "재화 정보를 찾을 수 없습니다.",
+    )
+
+    if currency.gem < request.amount:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="gem이 부족합니다.",
+        )
+
+    currency.gem -= request.amount
+    currency.updated_at = datetime.now()
+
+    db.commit()
+    db.refresh(currency)
+
+    return {
+        "user_id": user_id,
+        "gold": currency.gold,
+        "gem": currency.gem,
+        "updated_at": currency.updated_at,
+    }
+
+@app.patch(
+    "/users/{user_id}/status/upgrade-attack/",
+    response_model=schemas.UserStatUpgradeResponse,
+)
+def upgrade_user_attack(
+    user_id: int,
+    db: Session = Depends(get_db),
+):
+    user_status = get_or_404(
+        db,
+        models.UserStatus,
+        models.UserStatus.user_id == user_id,
+        "유저 상태 정보를 찾을 수 없습니다.",
+    )
+
+    currency = get_or_404(
+        db,
+        models.UserCurrency,
+        models.UserCurrency.user_id == user_id,
+        "재화 정보를 찾을 수 없습니다.",
+    )
+
+    cost_gold = calculate_user_stat_upgrade_cost(user_status.attack_upgrade_lvl)
+
+    if currency.gold < cost_gold:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"골드가 부족합니다. 필요 골드: {cost_gold}, 보유 골드: {currency.gold}",
+        )
+
+    increase_attack = calculate_attack_upgrade_amount(user_status.attack_upgrade_lvl)
+
+    currency.gold -= cost_gold
+    user_status.attack_power += increase_attack
+    user_status.attack_upgrade_lvl += 1
+
+    user_status.updated_at = datetime.now()
+    currency.updated_at = datetime.now()
+
+    db.commit()
+    db.refresh(user_status)
+    db.refresh(currency)
+
+    return {
+        "user_id": user_id,
+        "upgrade_type": "ATTACK",
+
+        "max_hp": user_status.max_hp,
+        "attack_power": user_status.attack_power,
+        "defense_power": user_status.defense_power,
+
+        "hp_upgrade_lvl": user_status.hp_upgrade_lvl,
+        "attack_upgrade_lvl": user_status.attack_upgrade_lvl,
+        "defense_upgrade_lvl": user_status.defense_upgrade_lvl,
+
+        "upgrade_lvl": user_status.attack_upgrade_lvl,
+
+        "gold": currency.gold,
+        "cost_gold": cost_gold,
+    }
+
+
+@app.patch(
+    "/users/{user_id}/status/upgrade-hp/",
+    response_model=schemas.UserStatUpgradeResponse,
+)
+
+def upgrade_user_hp(
+    user_id: int,
+    db: Session = Depends(get_db),
+):
+    user_status = get_or_404(
+        db,
+        models.UserStatus,
+        models.UserStatus.user_id == user_id,
+        "유저 상태 정보를 찾을 수 없습니다.",
+    )
+
+    currency = get_or_404(
+        db,
+        models.UserCurrency,
+        models.UserCurrency.user_id == user_id,
+        "재화 정보를 찾을 수 없습니다.",
+    )
+
+    cost_gold = calculate_user_stat_upgrade_cost(user_status.hp_upgrade_lvl)
+
+    if currency.gold < cost_gold:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"골드가 부족합니다. 필요 골드: {cost_gold}, 보유 골드: {currency.gold}",
+        )
+
+    increase_hp = calculate_hp_upgrade_amount(user_status.hp_upgrade_lvl)
+
+    currency.gold -= cost_gold
+    user_status.max_hp += increase_hp
+    user_status.hp_upgrade_lvl += 1
+
+    user_status.updated_at = datetime.now()
+    currency.updated_at = datetime.now()
+
+    db.commit()
+    db.refresh(user_status)
+    db.refresh(currency)
+
+    return {
+        "user_id": user_id,
+        "upgrade_type": "HP",
+
+        "max_hp": user_status.max_hp,
+        "attack_power": user_status.attack_power,
+        "defense_power": user_status.defense_power,
+
+        "hp_upgrade_lvl": user_status.hp_upgrade_lvl,
+        "attack_upgrade_lvl": user_status.attack_upgrade_lvl,
+        "defense_upgrade_lvl": user_status.defense_upgrade_lvl,
+
+        "upgrade_lvl": user_status.hp_upgrade_lvl,
+
+        "gold": currency.gold,
+        "cost_gold": cost_gold,
+    }
+
+
+
+
 @app.patch(
     "/user-items/{user_item_id}/enhance/",
     response_model=schemas.UserItemResponse,
@@ -620,34 +890,26 @@ def enhance_user_item(user_item_id: int, db: Session = Depends(get_db)):
     )
 
     if user_item is None:
-        raise HTTPException(status_code=404, detail="보유 아이템을 찾을 수 없습니다.")
-
-    if user_item.enhance_level >= 5:
         raise HTTPException(
-            status_code=400,
-            detail="이미 최대 강화 레벨입니다.",
+            status_code=404,
+            detail="보유 아이템을 찾을 수 없습니다.",
         )
 
-    currency = get_or_404(
-        db,
-        models.UserCurrency,
-        models.UserCurrency.user_id == user_item.user_id,
-        "재화 정보를 찾을 수 없습니다.",
-    )
+    # Unity 쪽 RequiredCount = Level + 1 구조와 맞춤
+    required_count = user_item.enhance_level + 1
 
-    cost = calculate_enhance_gold(user_item.enhance_level)
-
-    if currency.gold < cost:
+    if user_item.quantity < required_count:
         raise HTTPException(
             status_code=400,
-            detail=f"골드가 부족합니다. 필요 골드: {cost}",
+            detail=f"강화 재료가 부족합니다. 필요 수량: {required_count}, 보유 수량: {user_item.quantity}",
         )
 
-    currency.gold -= cost
+    user_item.quantity -= required_count
     user_item.enhance_level += 1
 
     db.commit()
     db.refresh(user_item)
+
     return user_item
 
 
@@ -1074,3 +1336,14 @@ def get_user_ai_feedbacks(user_id: int, db: Session = Depends(get_db)):
         .order_by(models.AIFeedbackLog.created_at.desc())
         .all()
     )
+
+@app.delete("/test/user-items/reset")
+def reset_user_items(db: Session = Depends(get_db)):
+    deleted_count = db.query(models.UserItem).delete()
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "user_item 목록이 초기화되었습니다.",
+        "deleted_count": deleted_count
+    }

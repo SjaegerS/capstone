@@ -1,279 +1,342 @@
-using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public class CharcterUpgrade : MonoBehaviour
 {
-    [SerializeField] private Button upgradeButton;
-    [SerializeField] private TextMeshProUGUI costText;
+    [Header("API")]
+    [SerializeField] private CharacterUpgradeApi characterUpgradeApi;
+
+    [Header("HP Upgrade UI")]
+    [SerializeField] private Button hpUpgradeButton;
+    [SerializeField] private TextMeshProUGUI hpValueText;
+    [SerializeField] private TextMeshProUGUI hpUpgradeLvlText;
+    [SerializeField] private TextMeshProUGUI hpUpgradeCostText;
+
+    [Header("Attack Upgrade UI")]
+    [SerializeField] private Button attackUpgradeButton;
+    [SerializeField] private TextMeshProUGUI attackValueText;
+    [SerializeField] private TextMeshProUGUI attackUpgradeLvlText;
+    [SerializeField] private TextMeshProUGUI attackUpgradeCostText;
+
+    [Header("Optional UI")]
+    [SerializeField] private TextMeshProUGUI defenseValueText;
+    [SerializeField] private TextMeshProUGUI goldText;
+    [SerializeField] private TextMeshProUGUI messageText;
+
+    [Header("Battle")]
     [SerializeField] private BattleManager battleManager;
-    [SerializeField] private int upgradeCount;
-    [SerializeField] private TextMeshProUGUI LVText;
-    [SerializeField] private TextMeshProUGUI hpText;
-    [SerializeField] private TextMeshProUGUI attackText;
-    [SerializeField] private TextMeshProUGUI statValueText;
 
-    public int UpgradeCount => upgradeCount;
-    public int CurrentCost => GameBalance.CharacterUpgradeGoldCost(EffectiveUpgradeCount);
+    private int currentMaxHp = 100;
+    private int currentAttackPower = 10;
+    private int currentDefensePower = 5;
 
-    private int EffectiveUpgradeCount => battleManager != null
-        ? Mathf.Max(upgradeCount, battleManager.GetPlayerUpgradeLevel(IsHealthUpgrade))
-        : upgradeCount;
-    private bool IsHealthUpgrade => DisplaysHealth();
+    private int hpUpgradeLvl = 1;
+    private int attackUpgradeLvl = 1;
+    private int defenseUpgradeLvl = 1;
+
+    private bool isLoading = false;
 
     private void Awake()
     {
-        AutoBindMissingReferences();
-
-        if (battleManager != null)
+        if (characterUpgradeApi == null)
         {
-            upgradeCount = Mathf.Max(upgradeCount, battleManager.GetPlayerUpgradeLevel(IsHealthUpgrade));
+            characterUpgradeApi = CharacterUpgradeApi.Instance;
         }
 
-        if (upgradeButton != null)
+        if (characterUpgradeApi == null)
         {
-            upgradeButton.onClick.RemoveListener(TryUpgrade);
-            upgradeButton.onClick.AddListener(TryUpgrade);
-        }
-    }
-
-    private void OnEnable()
-    {
-        UpdateUI();
-    }
-
-    private void Update()
-    {
-        UpdateUI();
-    }
-
-    public void TryUpgrade()
-    {
-        GoldManager goldManager = GoldManager.Instance;
-        if (goldManager == null)
-        {
-            Debug.LogWarning("[CharcterUpgrade] GoldManager is missing.");
-            return;
+            characterUpgradeApi = FindFirstObjectByType<CharacterUpgradeApi>();
         }
 
-        int currentUpgradeCount = EffectiveUpgradeCount;
-        int cost = GameBalance.CharacterUpgradeGoldCost(currentUpgradeCount);
-        if (!goldManager.TrySpendGold(cost))
+        if (hpUpgradeButton != null)
         {
-            Debug.Log($"[CharcterUpgrade] Not enough gold. Need {cost}, current {goldManager.currentGold}");
-            UpdateUI();
-            return;
+            hpUpgradeButton.onClick.RemoveListener(OnClickHpUpgrade);
+            hpUpgradeButton.onClick.AddListener(OnClickHpUpgrade);
         }
 
-        upgradeCount = currentUpgradeCount + 1;
-
-        battleManager?.ApplyPlayerUpgradeLevel(IsHealthUpgrade, upgradeCount);
-
-        Debug.Log($"[CharcterUpgrade] Upgrade success. Level {upgradeCount}, spent {cost} gold.");
-        UpdateUI();
-    }
-
-    private void UpdateUI()
-    {
-        int currentUpgradeCount = EffectiveUpgradeCount;
-        int cost = GameBalance.CharacterUpgradeGoldCost(currentUpgradeCount);
-
-        if (costText != null)
+        if (attackUpgradeButton != null)
         {
-            costText.text = cost.ToString();
-        }
-
-        if (LVText != null)
-        {
-            LVText.text = $"LV {currentUpgradeCount + 1}";
-        }
-
-        CharacterStats playerStats = GetCurrentPlayerStats(currentUpgradeCount);
-
-        if (hpText != null)
-        {
-            hpText.text = Mathf.RoundToInt(playerStats.MaxHP).ToString();
-        }
-
-        if (attackText != null)
-        {
-            attackText.text = Mathf.RoundToInt(playerStats.AttackDamage).ToString();
-        }
-
-        if (statValueText != null)
-        {
-            statValueText.text = GetDisplayedStatText(currentUpgradeCount);
-        }
-
-        if (upgradeButton != null && GoldManager.Instance != null)
-        {
-            upgradeButton.interactable = GoldManager.Instance.CanSpendGold(cost);
-        }
-    }
-
-    private void AutoBindMissingReferences()
-    {
-        if (upgradeButton == null)
-        {
-            upgradeButton = FindUpgradeButton();
+            attackUpgradeButton.onClick.RemoveListener(OnClickAttackUpgrade);
+            attackUpgradeButton.onClick.AddListener(OnClickAttackUpgrade);
         }
 
         if (battleManager == null)
         {
             battleManager = FindFirstObjectByType<BattleManager>();
         }
-
-        if (LVText == null)
-        {
-            LVText = FindLevelText();
-        }
-
-        if (hpText == null)
-        {
-            hpText = FindTextByName("HPText", "HealthText", "HpText");
-        }
-
-        if (attackText == null)
-        {
-            attackText = FindTextByName("AttackText", "ATKText", "AtkText");
-        }
-
-        if (statValueText == null)
-        {
-            statValueText = FindStatValueText();
-        }
     }
 
-    private Button FindUpgradeButton()
+    private void Start()
     {
-        Button[] buttons = GetComponentsInChildren<Button>(true);
-
-        foreach (Button button in buttons)
-        {
-            if (button.name.Trim() == "UpgradeButton")
-            {
-                return button;
-            }
-        }
-
-        return buttons.Length > 0 ? buttons[0] : null;
+        LoadUserStatusToUI();
     }
 
-    private TextMeshProUGUI FindLevelText()
+    private void OnEnable()
     {
-        TextMeshProUGUI[] texts = GetComponentsInChildren<TextMeshProUGUI>(true);
-
-        foreach (TextMeshProUGUI text in texts)
-        {
-            if (text.name.Trim() == "LVText")
-            {
-                return text;
-            }
-        }
-
-        foreach (TextMeshProUGUI text in texts)
-        {
-            if (text.text.Trim().StartsWith("LV"))
-            {
-                return text;
-            }
-        }
-
-        return null;
+        LoadUserStatusToUI();
     }
 
-    private TextMeshProUGUI FindTextByName(params string[] names)
+    private void LoadUserStatusToUI()
     {
-        TextMeshProUGUI[] texts = GetComponentsInChildren<TextMeshProUGUI>(true);
+        if (isLoading)
+            return;
 
-        foreach (string targetName in names)
+        if (characterUpgradeApi == null)
         {
-            foreach (TextMeshProUGUI text in texts)
+            characterUpgradeApi = FindFirstObjectByType<CharacterUpgradeApi>();
+        }
+
+        if (characterUpgradeApi == null)
+        {
+            Debug.LogError("[CharcterUpgrade] CharacterUpgradeApi가 없습니다.");
+            SetMessage("CharacterUpgradeApi가 없습니다.");
+            return;
+        }
+
+        isLoading = true;
+        SetButtonsInteractable(false);
+
+        StartCoroutine(characterUpgradeApi.LoadUserStatus(
+            (success, status) =>
             {
-                if (text.name.Trim() == targetName)
+                isLoading = false;
+                SetButtonsInteractable(true);
+
+                if (!success || status == null)
                 {
-                    return text;
+                    Debug.LogError("[CharcterUpgrade] 유저 상태 로드 실패");
+                    SetMessage("유저 상태 로드 실패");
+                    return;
                 }
-            }
-        }
 
-        return null;
+                ApplyStatusToUI(status);
+                SetMessage("");
+            }
+        ));
     }
 
-    private TextMeshProUGUI FindStatValueText()
+    private void OnClickHpUpgrade()
     {
-        TextMeshProUGUI[] texts = GetComponentsInChildren<TextMeshProUGUI>(true);
-
-        foreach (TextMeshProUGUI text in texts)
+        if (characterUpgradeApi == null)
         {
-            string value = text.text.Trim();
-            if (text != costText && text != LVText && int.TryParse(value, out _))
+            characterUpgradeApi = FindFirstObjectByType<CharacterUpgradeApi>();
+        }
+
+        if (characterUpgradeApi == null)
+        {
+            Debug.LogError("[CharcterUpgrade] CharacterUpgradeApi가 없습니다.");
+            SetMessage("CharacterUpgradeApi가 없습니다.");
+            return;
+        }
+
+        SetButtonsInteractable(false);
+        SetMessage("체력 강화 중...");
+
+        int currentCost = CalculateClientPreviewCost(hpUpgradeLvl);
+
+        StartCoroutine(characterUpgradeApi.UpgradeCharacter(
+            true,
+            hpUpgradeLvl,
+            currentCost,
+            0,
+            0,
+            (success, response) =>
             {
-                return text;
+                SetButtonsInteractable(true);
+
+                if (!success || response == null)
+                {
+                    Debug.LogError("[CharcterUpgrade] 체력 강화 실패");
+                    SetMessage("체력 강화 실패");
+                    return;
+                }
+
+                ApplyUpgradeResponseToUI(response);
+                SetMessage("체력 강화 완료");
             }
-        }
-
-        return null;
+        ));
     }
 
-    private string GetDisplayedStatText(int currentUpgradeCount)
+    private void OnClickAttackUpgrade()
     {
-        int baseStat = GetUpgradedBaseStat(currentUpgradeCount);
-        int equipmentIncrease = GetEquipmentStatIncrease(baseStat);
-        return $"{baseStat} + ({equipmentIncrease})";
-    }
-
-    private int GetUpgradedBaseStat(int currentUpgradeCount)
-    {
-        if (IsHealthUpgrade)
+        if (characterUpgradeApi == null)
         {
-            return Mathf.RoundToInt(GameBalance.PlayerStatAfterUpgrade(GameBalance.PlayerBaseHP, currentUpgradeCount));
+            characterUpgradeApi = FindFirstObjectByType<CharacterUpgradeApi>();
         }
 
-        return Mathf.RoundToInt(GameBalance.PlayerStatAfterUpgrade(GameBalance.PlayerBaseATK, currentUpgradeCount));
+        if (characterUpgradeApi == null)
+        {
+            Debug.LogError("[CharcterUpgrade] CharacterUpgradeApi가 없습니다.");
+            SetMessage("CharacterUpgradeApi가 없습니다.");
+            return;
+        }
+
+        SetButtonsInteractable(false);
+        SetMessage("공격력 강화 중...");
+
+        int currentCost = CalculateClientPreviewCost(attackUpgradeLvl);
+
+        StartCoroutine(characterUpgradeApi.UpgradeCharacter(
+            false,
+            attackUpgradeLvl,
+            currentCost,
+            0,
+            0,
+            (success, response) =>
+            {
+                SetButtonsInteractable(true);
+
+                if (!success || response == null)
+                {
+                    Debug.LogError("[CharcterUpgrade] 공격력 강화 실패");
+                    SetMessage("공격력 강화 실패");
+                    return;
+                }
+
+                ApplyUpgradeResponseToUI(response);
+                SetMessage("공격력 강화 완료");
+            }
+        ));
     }
 
-    private int GetEquipmentStatIncrease(int baseStat)
+    private void ApplyStatusToUI(CharacterUpgradeApi.UserStatusResponse status)
     {
-        EquipmentStatBonus bonus = IsHealthUpgrade
-            ? EquipmentStatCalculator.GetArmorBonus()
-            : EquipmentStatCalculator.GetWeaponBonus();
+        currentMaxHp = status.max_hp;
+        currentAttackPower = status.attack_power;
+        currentDefensePower = status.defense_power;
 
-        return EquipmentStatCalculator.GetBonusIncrease(baseStat, bonus);
-    }
+        hpUpgradeLvl = status.hp_upgrade_lvl;
+        attackUpgradeLvl = status.attack_upgrade_lvl;
+        defenseUpgradeLvl = status.defense_upgrade_lvl;
 
-    private CharacterStats GetCurrentPlayerStats(int currentUpgradeCount)
-    {
-        int hpUpgradeLevel = IsHealthUpgrade ? currentUpgradeCount : 0;
-        int attackUpgradeLevel = IsHealthUpgrade ? 0 : currentUpgradeCount;
+        RefreshAllTexts();
+
+        if (battleManager == null)
+        {
+            battleManager = FindFirstObjectByType<BattleManager>();
+        }
 
         if (battleManager != null)
         {
-            hpUpgradeLevel = IsHealthUpgrade ? currentUpgradeCount : battleManager.GetPlayerUpgradeLevel(true);
-            attackUpgradeLevel = IsHealthUpgrade ? battleManager.GetPlayerUpgradeLevel(false) : currentUpgradeCount;
+            battleManager.ApplyPlayerStatsFromDb(
+                status.max_hp,
+                status.attack_power,
+                status.defense_power,
+                status.hp_upgrade_lvl,
+                status.attack_upgrade_lvl
+            );
         }
-
-        return CharacterStats.CreatePlayer(hpUpgradeLevel, attackUpgradeLevel);
     }
 
-    private bool DisplaysHealth()
+   private void ApplyUpgradeResponseToUI(CharacterUpgradeApi.CharacterUpgradeResponse response)
     {
-        TextMeshProUGUI[] texts = GetComponentsInChildren<TextMeshProUGUI>(true);
+        currentMaxHp = response.max_hp;
+        currentAttackPower = response.attack_power;
+        currentDefensePower = response.defense_power;
 
-        foreach (TextMeshProUGUI text in texts)
+        hpUpgradeLvl = Mathf.Max(1, response.hp_upgrade_lvl);
+        attackUpgradeLvl = Mathf.Max(1, response.attack_upgrade_lvl);
+        defenseUpgradeLvl = Mathf.Max(1, response.defense_upgrade_lvl);
+
+        RefreshAllTexts();
+
+        if (goldText != null)
         {
-            string value = text.text.Trim();
-            if (value.Contains("\uCCB4\uB825"))
-            {
-                return true;
-            }
-
-            if (value.Contains("체력") || value.Contains("HP") || value.Contains("Health"))
-            {
-                return true;
-            }
+            goldText.text = $"Gold: {response.gold}";
         }
 
-        return false;
+        GoldManager.Instance?.SetGold(response.gold);
+        CurrencyUIManager.Instance?.SetGold(response.gold);
+
+        if (battleManager == null)
+        {
+            battleManager = FindFirstObjectByType<BattleManager>();
+        }
+
+        if (battleManager != null)
+        {
+            battleManager.ApplyPlayerStatsFromDb(
+                response.max_hp,
+                response.attack_power,
+                response.defense_power,
+                response.hp_upgrade_lvl,
+                response.attack_upgrade_lvl
+            );
+        }
+    }
+
+    private void RefreshAllTexts()
+    {
+        if (hpValueText != null)
+        {
+            hpValueText.text = $"체력: {currentMaxHp}";
+        }
+
+        if (attackValueText != null)
+        {
+            attackValueText.text = $"공격력: {currentAttackPower}";
+        }
+
+        if (defenseValueText != null)
+        {
+            defenseValueText.text = $"방어력: {currentDefensePower}";
+        }
+
+        if (hpUpgradeLvlText != null)
+        {
+            hpUpgradeLvlText.text = $"Lv.{hpUpgradeLvl}";
+        }
+
+        if (attackUpgradeLvlText != null)
+        {
+            attackUpgradeLvlText.text = $"Lv.{attackUpgradeLvl}";
+        }
+
+        if (hpUpgradeCostText != null)
+        {
+            hpUpgradeCostText.text = $"{CalculateClientPreviewCost(hpUpgradeLvl)} Gold";
+        }
+
+        if (attackUpgradeCostText != null)
+        {
+            attackUpgradeCostText.text = $"{CalculateClientPreviewCost(attackUpgradeLvl)} Gold";
+        }
+    }
+
+    private int CalculateClientPreviewCost(int upgradeLvl)
+    {
+        return GameBalance.StatUpgradeGoldCost(upgradeLvl);
+    }
+
+    private void SetButtonsInteractable(bool value)
+    {
+        if (hpUpgradeButton != null)
+        {
+            hpUpgradeButton.interactable = value;
+        }
+
+        if (attackUpgradeButton != null)
+        {
+            attackUpgradeButton.interactable = value;
+        }
+    }
+
+    private void SetMessage(string message)
+    {
+        if (messageText != null)
+        {
+            messageText.text = message;
+        }
+
+        if (!string.IsNullOrEmpty(message))
+        {
+            Debug.Log($"[CharcterUpgrade] {message}");
+        }
+    }
+
+    public void RefreshFromServer()
+    {
+        LoadUserStatusToUI();
     }
 }

@@ -2,105 +2,251 @@ using UnityEngine;
 
 public static class GameBalance
 {
-    // ── 플레이어 기본 스탯 ────────────────────────────────────────
-    public const float PlayerBaseHP  = 100f;
+    // ─────────────────────────────────────
+    // 플레이어 기본 스탯
+    // ─────────────────────────────────────
+    public const float PlayerBaseHP = 100f;
     public const float PlayerBaseATK = 20f;
     public const float PlayerBaseDEF = 20f;
 
-    // ── 몬스터 기본 스탯 ─────────────────────────────────────────
-    public const float EnemyBaseHP  = 80f;
+    // ─────────────────────────────────────
+    // 몬스터 기본 스탯
+    // ─────────────────────────────────────
+    public const float EnemyBaseHP = 80f;
     public const float EnemyBaseATK = 10f;
     public const float EnemyBaseDEF = 10f;
 
-    // ── 공식 계수 ─────────────────────────────────────────────────
-    private const float PlayerGrowthRate   = 1.13f;
-    private const float EnemyGrowthRate    = 1.15f;
-    private const float RewardGrowthRate   = 1.14f;
-    private const float ExpLevelGrowthRate = 1.16f;
-    private const float UpgradeCostRate    = 1.17f;
+    // ─────────────────────────────────────
+    // 성장률 상수
+    // ─────────────────────────────────────
+    public const float PlayerStatUpgradeRate = 1.13f;
+    public const float EnemyGrowthRate = 1.14f;
+    public const float RewardGrowthRate = 1.14f;
+    public const float ExpLevelGrowthRate = 1.16f;
+    public const float UpgradeCostRate = 1.17f;
+    public const float CharacterUpgradeCostRate = 1.20f;
 
-    // ── 미확정 보정 배율 (기획서 수치 미정 → 1.0) ─────────────────
+    // ─────────────────────────────────────
+    // 강화 기본값
+    // ─────────────────────────────────────
+    public const int StatUpgradeAmountBase = 1;
+    public const int StatUpgradeGoldBase = 1000;
+    public const int CharacterUpgradeGoldBase = 3000;
+
+    // ─────────────────────────────────────
+    // 보상 기본값
+    // ─────────────────────────────────────
+    public const int BaseStageExpReward = 60;
+    public const int BaseStageGoldReward = 1000;
+
+    public const float GoldContentMultiplier = 1.5f;
+
+    // ─────────────────────────────────────
+    // 레벨업 경험치
+    // ─────────────────────────────────────
+    public const int BaseRequiredExp = 1000;
+
+    // ─────────────────────────────────────
+    // 임시 보정 배율
+    // ─────────────────────────────────────
     public const float CharacterTypeBonus = 1.0f;
-    public const float EquipOptionBonus   = 1.0f;
-    public const float ConditionBonus     = 1.0f;
+    public const float EquipOptionBonus = 1.0f;
+    public const float ConditionBonus = 1.0f;
 
-    // ── 기본 공격속도/이동속도 ────────────────────────────────────
+    // ─────────────────────────────────────
+    // 기본 공격속도 / 이동속도
+    // ─────────────────────────────────────
     public const float DefaultAttackSpeed = 1.2f;
-    public const float PlayerMoveSpeed    = 3.0f;
-    public const float EnemyMoveSpeed     = 2.0f;
+    public const float PlayerMoveSpeed = 3.0f;
+    public const float EnemyMoveSpeed = 2.0f;
 
-    // ── 보상 비율 ─────────────────────────────────────────────────
-    private const float BaseReward              = 1000f;
-    private const float ExpRatio                = 0.6f;
-    private const float GoldRatio               = 0.4f;
-    public  const float GoldContentMultiplier   = 1.5f;
-
-    /// <summary>플레이어 스탯 강화 후 수치 — 해석 A: base + 1×1.13^n</summary>
-    /// <remarks>
-    /// ⚠ 기획자 확인 필요: 해석 B(base + n×1.13^n) 또는 C(base × 1.13^n)일 경우
-    /// 이 한 줄만 수정하면 됩니다.
-    /// </remarks>
-    public static float PlayerStatAfterUpgrade(float baseStat, int upgradeLevel)
+    // ─────────────────────────────────────
+    // 스탯 강화 증가량
+    // 공식: 1 × 1.13^n
+    //
+    // DB upgrade_lvl 기본값이 1이면:
+    // Lv.1 -> Lv.2 강화 시 n = 0
+    // Lv.2 -> Lv.3 강화 시 n = 1
+    // ─────────────────────────────────────
+    public static int StatUpgradeAmount(int upgradeLvl)
     {
-        int n = Mathf.Max(0, upgradeLevel);
-        return baseStat * Mathf.Pow(PlayerGrowthRate, n);
+        int safeLvl = Mathf.Max(1, upgradeLvl);
+        int n = safeLvl - 1;
+
+        return Mathf.Max(
+            1,
+            Mathf.RoundToInt(StatUpgradeAmountBase * Mathf.Pow(PlayerStatUpgradeRate, n))
+        );
     }
 
-    /// <summary>스테이지 n 몬스터 스탯 — base × 1.15^(n-1)</summary>
+    public static int HpUpgradeAmount(int hpUpgradeLvl)
+    {
+        return StatUpgradeAmount(hpUpgradeLvl);
+    }
+
+    public static int AttackUpgradeAmount(int attackUpgradeLvl)
+    {
+        return StatUpgradeAmount(attackUpgradeLvl);
+    }
+
+    public static int DefenseUpgradeAmount(int defenseUpgradeLvl)
+    {
+        return StatUpgradeAmount(defenseUpgradeLvl);
+    }
+
+    // ─────────────────────────────────────
+    // 스탯 강화 비용
+    // 공식: 1000 × 1.17^n
+    //
+    // Lv.1 -> Lv.2 비용 = 1000
+    // Lv.2 -> Lv.3 비용 = 1170
+    // ─────────────────────────────────────
+    public static int StatUpgradeGoldCost(int upgradeLvl)
+    {
+        int safeLvl = Mathf.Max(1, upgradeLvl);
+        int n = safeLvl - 1;
+
+        return Mathf.RoundToInt(StatUpgradeGoldBase * Mathf.Pow(UpgradeCostRate, n));
+    }
+
+    public static int CharacterUpgradeGoldCost(int characterUpgradeLvl)
+    {
+        int safeLvl = Mathf.Max(1, characterUpgradeLvl);
+        int n = safeLvl - 1;
+
+        return Mathf.RoundToInt(CharacterUpgradeGoldBase * Mathf.Pow(CharacterUpgradeCostRate, n));
+    }
+
+    // ─────────────────────────────────────
+    // 몬스터 스탯
+    // 공식: 기본 스탯 × 1.14^n
+    //
+    // Stage 1이면 n = 0
+    // Stage 2이면 n = 1
+    // ─────────────────────────────────────
     public static float EnemyStatAtStage(float baseStat, int stage)
     {
-        int n = Mathf.Max(0, stage - 1);
+        int safeStage = Mathf.Max(1, stage);
+        int n = safeStage - 1;
+
         return baseStat * Mathf.Pow(EnemyGrowthRate, n);
     }
 
-    /// <summary>데미지 공식 — atk × (1 - def / (def + atk×2))</summary>
-    public static float CalculateDamage(float atk, float def)
+    public static int EnemyHP(int stage)
     {
-        float denom = def + atk * 2f;
-        if (denom <= 0f) return atk;
-        return atk * (1f - def / denom);
+        return Mathf.RoundToInt(EnemyStatAtStage(EnemyBaseHP, stage));
     }
 
-    /// <summary>레벨 n → 다음 레벨 필요 경험치 — 1000 × 1.16^n</summary>
-    public static float ExpRequired(int level)
+    public static int EnemyAttack(int stage)
     {
-        return 1000f * Mathf.Pow(ExpLevelGrowthRate, level);
+        return Mathf.RoundToInt(EnemyStatAtStage(EnemyBaseATK, stage));
     }
 
-    /// <summary>강화 n회차 골드 비용 — 1000 × 1.17^n</summary>
-    public static float StatUpgradeGoldCost(int upgradeCount)
+    public static int EnemyDefense(int stage)
     {
-        return 1000f * Mathf.Pow(UpgradeCostRate, upgradeCount);
+        return Mathf.RoundToInt(EnemyStatAtStage(EnemyBaseDEF, stage));
     }
 
-    /// <summary>Character upgrade gold cost: 1000 * 1.17^n.</summary>
-    public static int CharacterUpgradeGoldCost(int upgradeCount)
+    // ─────────────────────────────────────
+    // 전투 데미지
+    // 공식: 체력 - (공격력 × (1 - 방어력 / (방어력 + 상대 공격력 × 2)))
+    // 여기서는 실제 데미지만 반환
+    // ─────────────────────────────────────
+    public static float CalculateDamage(float attack, float defense)
     {
-        return Mathf.RoundToInt(StatUpgradeGoldCost(upgradeCount));
+        float denominator = defense + attack * 2f;
+
+        if (denominator <= 0f)
+        {
+            return attack;
+        }
+
+        float damage = attack * (1f - defense / denominator);
+
+        return Mathf.Max(1f, damage);
     }
 
-    /// <summary>스테이지 n 총 보상 — 1000 × 1.14^(n-1)</summary>
-    public static float TotalRewardAtStage(int stage)
+    // ─────────────────────────────────────
+    // 필요 경험치
+    // 공식: 1000 × 1.16^n
+    //
+    // Lv.1 -> Lv.2 필요 경험치 = 1000
+    // ─────────────────────────────────────
+    public static int RequiredExp(int playerLevel)
     {
-        int n = Mathf.Max(0, stage - 1);
-        return BaseReward * Mathf.Pow(RewardGrowthRate, n);
+        int safeLevel = Mathf.Max(1, playerLevel);
+        int n = safeLevel - 1;
+
+        return Mathf.RoundToInt(BaseRequiredExp * Mathf.Pow(ExpLevelGrowthRate, n));
     }
 
-    /// <summary>스테이지 n 경험치 보상 (총 보상의 60%)</summary>
+    // 기존 이름 호환용
+    public static float ExpRequired(int playerLevel)
+    {
+        return RequiredExp(playerLevel);
+    }
+
+    // ─────────────────────────────────────
+    // 스테이지 클리어 보상
+    // 기본: 경험치 60, 골드 40
+    // 공식: 기본값 × 1.14^n
+    // ─────────────────────────────────────
     public static int RewardExp(int stage)
     {
-        return Mathf.RoundToInt(TotalRewardAtStage(stage) * ExpRatio);
+        int safeStage = Mathf.Max(1, stage);
+        int n = safeStage - 1;
+
+        return Mathf.RoundToInt(BaseStageExpReward * Mathf.Pow(RewardGrowthRate, n));
     }
 
-    /// <summary>스테이지 n 골드 보상 (총 보상의 40%)</summary>
     public static int RewardGold(int stage)
     {
-        return Mathf.RoundToInt(TotalRewardAtStage(stage) * GoldRatio);
+        int safeStage = Mathf.Max(1, stage);
+        int n = safeStage - 1;
+
+        return Mathf.RoundToInt(BaseStageGoldReward * Mathf.Pow(RewardGrowthRate, n));
     }
 
-    /// <summary>골드 콘텐츠 보상 — baseGold × 1.5</summary>
-    public static float GoldContentReward(float baseGold)
+    // ─────────────────────────────────────
+    // 골드 콘텐츠 보상
+    // 공식: 골드 × 150%
+    // ─────────────────────────────────────
+    public static int GoldContentReward(int baseGold)
     {
-        return baseGold * GoldContentMultiplier;
+        return Mathf.RoundToInt(baseGold * GoldContentMultiplier);
+    }
+
+    // ─────────────────────────────────────
+    // 플레이어 스탯 계산용
+    // 현재 DB에서는 max_hp, attack_power를 서버에 저장하므로
+    // 이 함수는 로컬 계산/테스트용
+    // ─────────────────────────────────────
+    public static int PlayerHPFromUpgradeLvl(int hpUpgradeLvl)
+    {
+        return Mathf.RoundToInt(PlayerBaseHP + TotalStatUpgradeBonus(hpUpgradeLvl));
+    }
+
+    public static int PlayerAttackFromUpgradeLvl(int attackUpgradeLvl)
+    {
+        return Mathf.RoundToInt(PlayerBaseATK + TotalStatUpgradeBonus(attackUpgradeLvl));
+    }
+
+    public static int PlayerDefenseFromUpgradeLvl(int defenseUpgradeLvl)
+    {
+        return Mathf.RoundToInt(PlayerBaseDEF + TotalStatUpgradeBonus(defenseUpgradeLvl));
+    }
+
+    // Lv.1은 기본 상태로 보고, Lv.2부터 누적 보너스 계산
+    public static int TotalStatUpgradeBonus(int upgradeLvl)
+    {
+        int safeLvl = Mathf.Max(1, upgradeLvl);
+        int total = 0;
+
+        for (int lvl = 1; lvl < safeLvl; lvl++)
+        {
+            total += StatUpgradeAmount(lvl);
+        }
+
+        return total;
     }
 }

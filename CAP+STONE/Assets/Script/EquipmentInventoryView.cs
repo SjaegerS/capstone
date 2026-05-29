@@ -94,13 +94,14 @@ public static class EquipmentInventoryView
         slot.gameObject.SetActive(true);
 
         EquipmentInventoryRecord record = EquipmentInventory.GetRecord(sprite);
+
         EquipmentSlotUpgradeButton upgradeButton = slot.GetComponent<EquipmentSlotUpgradeButton>();
         if (upgradeButton == null)
         {
             upgradeButton = slot.gameObject.AddComponent<EquipmentSlotUpgradeButton>();
         }
 
-        upgradeButton.Configure(sprite);
+        upgradeButton.Configure(sprite, record.UserItemId);
 
         Image icon = FindIconImage(slot);
         if (icon != null)
@@ -120,14 +121,23 @@ public static class EquipmentInventoryView
         {
             slider.minValue = 0f;
             slider.maxValue = 1f;
-            slider.value = record.IsOwned && record.RequiredCount > 0 ? Mathf.Clamp01((float)record.TotalCount / record.RequiredCount) : 0f;
-            SetSliderFillColor(slider, record.CanUpgrade ? new Color(0.15f, 0.9f, 0.25f, 1f) : new Color(0.95f, 0.78f, 0.2f, 1f));
+            slider.value = record.IsOwned && record.RequiredCount > 0
+                ? Mathf.Clamp01((float)record.TotalCount / record.RequiredCount)
+                : 0f;
+
+            SetSliderFillColor(
+                slider,
+                record.CanUpgrade
+                    ? new Color(0.15f, 0.9f, 0.25f, 1f)
+                    : new Color(0.95f, 0.78f, 0.2f, 1f)
+            );
         }
 
         TextMeshProUGUI progressText = GetOrCreateProgressText(slot);
         if (progressText != null)
         {
             progressText.raycastTarget = false;
+            progressText.gameObject.SetActive(true);
             progressText.text = record.IsOwned ? record.TotalCount + "/" + record.RequiredCount : "0/2";
         }
     }
@@ -158,6 +168,7 @@ public static class EquipmentInventoryView
         TextMeshProUGUI progressText = GetOrCreateProgressText(slot);
         if (progressText != null)
         {
+            progressText.gameObject.SetActive(true);
             progressText.raycastTarget = false;
             progressText.text = "0/2";
         }
@@ -240,13 +251,17 @@ public static class EquipmentInventoryView
     private static TextMeshProUGUI GetOrCreateProgressText(Transform slot)
     {
         Slider slider = slot.GetComponentInChildren<Slider>(true);
+
         if (slider != null)
         {
             TextMeshProUGUI[] sliderTexts = slider.GetComponentsInChildren<TextMeshProUGUI>(true);
+
             foreach (TextMeshProUGUI sliderText in sliderTexts)
             {
                 if (sliderText != null)
                 {
+                    sliderText.gameObject.SetActive(true);
+                    sliderText.raycastTarget = false;
                     return sliderText;
                 }
             }
@@ -254,7 +269,13 @@ public static class EquipmentInventoryView
             Transform existing = slider.transform.Find("Text (TMP)");
             if (existing != null)
             {
-                return existing.GetComponent<TextMeshProUGUI>();
+                TextMeshProUGUI text = existing.GetComponent<TextMeshProUGUI>();
+                if (text != null)
+                {
+                    text.gameObject.SetActive(true);
+                    text.raycastTarget = false;
+                    return text;
+                }
             }
         }
 

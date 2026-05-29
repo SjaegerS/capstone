@@ -115,11 +115,25 @@ class UserStatus(Base):
     current_stage = Column(Integer, default=1)
     total_boss_kill_count = Column(Integer, default=0)
 
+    max_hp = Column(Integer, default=100)
+    attack_power = Column(Integer, default=10)
+    defense_power = Column(Integer, default=5)
+
+    hp_upgrade_lvl = Column(Integer, default=1)
+    attack_upgrade_lvl = Column(Integer, default=1)
+    defense_upgrade_lvl = Column(Integer, default=1)
+
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "max_hp >= 1 AND attack_power >= 0 AND defense_power >= 0",
+            name="chk_user_status_stats",
+        ),
+    )
 
     user = relationship("User", back_populates="status")
     current_character = relationship("CharacterInfo")
-
 
 class CharacterStatus(Base):
     __tablename__ = "character_status"
@@ -137,18 +151,6 @@ class CharacterStatus(Base):
     )
 
     character_level = Column(Integer, default=1)
-
-    max_hp = Column(Integer, default=100)
-    current_hp = Column(Integer, default=100)
-    attack_power = Column(Integer, default=10)
-    defense_power = Column(Integer, default=5)
-
-    __table_args__ = (
-        CheckConstraint(
-            "current_hp >= 0 AND max_hp >= 1 AND current_hp <= max_hp",
-            name="chk_character_hp",
-        ),
-    )
 
     user = relationship("User", back_populates="character_statuses")
     character = relationship("CharacterInfo")
@@ -216,6 +218,8 @@ class UserItem(Base):
         ForeignKey("item.item_id", ondelete="CASCADE"),
         nullable=False,
     )
+
+    quantity = Column(Integer, nullable=False, default=1)
 
     enhance_level = Column(Integer, default=0)
     is_equipped = Column(Boolean, default=False)
