@@ -15,9 +15,9 @@ public class BattleManager : MonoBehaviour
     [Header("Balance")]
     [Tooltip("기존 호환용. 가능하면 hp/attack 개별 레벨 사용")]
     public int playerUpgradeLevel = 1;
-
     public int playerHpUpgradeLevel = 1;
     public int playerAttackUpgradeLevel = 1;
+    public int playerDefenseUpgradeLevel = 1;
 
     [Tooltip("시작 스테이지 번호")]
     public int startingStage = 1;
@@ -33,10 +33,9 @@ public class BattleManager : MonoBehaviour
 
     [Header("API")]
     public BattleRewardApi battleRewardApi;
-    public UserCreateApi userCreateApi;
 
-    [Tooltip("테스트용 유저 ID. UserCreateApi 또는 PlayerPrefs 값이 있으면 자동으로 덮어씀.")]
-    public int userId = 8;
+    [Tooltip("0이면 TitleManager에서 생성/저장한 USER_ID 사용.")]
+    public int userId = 0;
 
     [Tooltip("DB 저장 실패해도 전투를 계속 진행할지 여부")]
     public bool continueBattleWhenDbSaveFails = true;
@@ -72,39 +71,58 @@ public class BattleManager : MonoBehaviour
     {
         if (battleRewardApi == null)
             battleRewardApi = FindFirstObjectByType<BattleRewardApi>();
-
-        if (userCreateApi == null)
-            userCreateApi = FindFirstObjectByType<UserCreateApi>();
     }
 
     private void ResolveUserId()
     {
-        if (userCreateApi != null && userCreateApi.CurrentUserId > 0)
+        if (battleRewardApi != null)
         {
-            userId = (int)userCreateApi.CurrentUserId;
-            Debug.Log($"[BattleManager] UserCreateApi에서 user_id 로드: {userId}");
+            int apiUserId = battleRewardApi.GetUserId();
+
+            if (apiUserId > 0)
+            {
+                userId = apiUserId;
+                CurrentUser.UserId = apiUserId;
+
+                Debug.Log($"[BattleManager] BattleRewardApi에서 USER_ID 로드: {userId}");
+                return;
+            }
+        }
+
+        if (CurrentUser.UserId > 0)
+        {
+            userId = CurrentUser.UserId;
+
+            Debug.Log($"[BattleManager] CurrentUser에서 USER_ID 로드: {userId}");
             return;
         }
 
-        if (PlayerPrefs.HasKey("TEST_USER_ID") &&
-            int.TryParse(PlayerPrefs.GetString("TEST_USER_ID"), out int testUserId) &&
-            testUserId > 0)
-        {
-            userId = testUserId;
-            Debug.Log($"[BattleManager] TEST_USER_ID에서 user_id 로드: {userId}");
-            return;
-        }
-
-        int savedUserId = PlayerPrefs.GetInt("user_id", 8);
+        int savedUserId = PlayerPrefs.GetInt(BattleRewardApi.USER_ID_KEY, -1);
 
         if (savedUserId > 0)
         {
             userId = savedUserId;
-            Debug.Log($"[BattleManager] PlayerPrefs user_id에서 로드: {userId}");
+            CurrentUser.UserId = savedUserId;
+
+            Debug.Log($"[BattleManager] PlayerPrefs USER_ID에서 로드: {userId}");
             return;
         }
 
-        Debug.LogWarning($"[BattleManager] 저장된 user_id가 없어 Inspector userId 사용: {userId}");
+        if (userId > 0)
+        {
+            CurrentUser.UserId = userId;
+
+            PlayerPrefs.SetInt(BattleRewardApi.USER_ID_KEY, userId);
+            PlayerPrefs.Save();
+
+            Debug.LogWarning($"[BattleManager] Inspector userId 사용: {userId}");
+            return;
+        }
+
+        Debug.LogError(
+            "[BattleManager] 사용 가능한 USER_ID가 없습니다. " +
+            "TitleScene에서 게임 시작 버튼을 통해 유저를 먼저 생성해야 합니다."
+        );
     }
 
     private void SyncLegacyUpgradeLevel()
@@ -116,11 +134,20 @@ public class BattleManager : MonoBehaviour
 
             if (playerAttackUpgradeLevel <= 0)
                 playerAttackUpgradeLevel = playerUpgradeLevel;
+
+            if (playerDefenseUpgradeLevel <= 0)
+                playerDefenseUpgradeLevel = playerUpgradeLevel;
         }
 
         playerHpUpgradeLevel = Mathf.Max(1, playerHpUpgradeLevel);
         playerAttackUpgradeLevel = Mathf.Max(1, playerAttackUpgradeLevel);
-        playerUpgradeLevel = Mathf.Max(playerHpUpgradeLevel, playerAttackUpgradeLevel);
+        playerDefenseUpgradeLevel = Mathf.Max(1, playerDefenseUpgradeLevel);
+
+        playerUpgradeLevel = Mathf.Max(
+            playerHpUpgradeLevel,
+            playerAttackUpgradeLevel,
+            playerDefenseUpgradeLevel
+        );
     }
 
     bool ValidateReferences()
@@ -164,6 +191,7 @@ public class BattleManager : MonoBehaviour
         playerUpgradeLevel = Mathf.Max(1, upgradeLvl);
         playerHpUpgradeLevel = playerUpgradeLevel;
         playerAttackUpgradeLevel = playerUpgradeLevel;
+        playerDefenseUpgradeLevel = playerUpgradeLevel;
 
         ApplyCurrentPlayerStats();
     }
@@ -225,7 +253,8 @@ public class BattleManager : MonoBehaviour
         int attackPower,
         int defensePower,
         int hpUpgradeLvl,
-        int attackUpgradeLvl
+        int attackUpgradeLvl,
+        int defenseUpgradeLvl
     )
     {
         dbMaxHp = Mathf.Max(1, maxHp);
@@ -234,7 +263,12 @@ public class BattleManager : MonoBehaviour
 
         playerHpUpgradeLevel = Mathf.Max(1, hpUpgradeLvl);
         playerAttackUpgradeLevel = Mathf.Max(1, attackUpgradeLvl);
-        playerUpgradeLevel = Mathf.Max(playerHpUpgradeLevel, playerAttackUpgradeLevel);
+        playerDefenseUpgradeLevel = Mathf.Max(1, defenseUpgradeLvl);
+        playerUpgradeLevel = Mathf.Max(
+                                playerHpUpgradeLevel,
+                                playerAttackUpgradeLevel,
+                                playerDefenseUpgradeLevel
+                             );
 
         hasDbStatus = true;
 
@@ -243,7 +277,10 @@ public class BattleManager : MonoBehaviour
         Debug.Log(
             $"[BattleManager] 강화 스탯 적용 완료 - " +
             $"HP: {dbMaxHp}, ATK: {dbAttackPower}, DEF: {dbDefensePower}, " +
-            $"HP_Lv: {playerHpUpgradeLevel}, ATK_Lv: {playerAttackUpgradeLevel}"
+            $"HP_Lv: {playerHpUpgradeLevel}"+
+            $"ATK_Lv: {playerAttackUpgradeLevel}"+
+            $"DEF_Lv: {playerDefenseUpgradeLevel}"
+            
         );
     }
 
@@ -272,7 +309,12 @@ public class BattleManager : MonoBehaviour
 
                         playerHpUpgradeLevel = Mathf.Max(1, status.hp_upgrade_lvl);
                         playerAttackUpgradeLevel = Mathf.Max(1, status.attack_upgrade_lvl);
-                        playerUpgradeLevel = Mathf.Max(playerHpUpgradeLevel, playerAttackUpgradeLevel);
+                        playerDefenseUpgradeLevel = Mathf.Max(1, status.defense_upgrade_lvl);
+                        playerUpgradeLevel = Mathf.Max(
+                            playerHpUpgradeLevel, 
+                            playerAttackUpgradeLevel,
+                            playerDefenseUpgradeLevel
+                            );
 
                         hasDbStatus = true;
                         loaded = true;
@@ -295,7 +337,9 @@ public class BattleManager : MonoBehaviour
                     $"[BattleManager] DB 상태 로드 완료\n" +
                     $"user_id: {userId}, stage: {startingStage}, " +
                     $"HP: {dbMaxHp}, ATK: {dbAttackPower}, DEF: {dbDefensePower}, " +
-                    $"HP_Lv: {playerHpUpgradeLevel}, ATK_Lv: {playerAttackUpgradeLevel}"
+                    $"HP_Lv: {playerHpUpgradeLevel}"+
+                    $"ATK_Lv: {playerAttackUpgradeLevel}"+
+                    $"DEF_Lv: {playerDefenseUpgradeLevel}"
                 );
             }
             else

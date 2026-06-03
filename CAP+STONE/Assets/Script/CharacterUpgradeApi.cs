@@ -7,11 +7,17 @@ public class CharacterUpgradeApi : MonoBehaviour
 {
     public static CharacterUpgradeApi Instance { get; private set; }
 
+    private const string USER_ID_KEY = "USER_ID";
+
     [Header("API")]
     [SerializeField] private string baseUrl = "http://127.0.0.1:8000";
 
     [Header("User")]
-    [SerializeField] private UserCreateApi userCreateApi;
+    [Tooltip("0이면 TitleManager에서 생성/저장한 USER_ID 사용. 테스트용으로 특정 ID를 강제할 때만 입력.")]
+    [SerializeField] private int userIdOverride = 0;
+
+    [Header("References")]
+    [SerializeField] private BattleRewardApi battleRewardApi;
 
     [Serializable]
     public class UserStatusResponse
@@ -33,6 +39,8 @@ public class CharacterUpgradeApi : MonoBehaviour
         public int hp_upgrade_lvl;
         public int attack_upgrade_lvl;
         public int defense_upgrade_lvl;
+
+        public long gold;
     }
 
     [Serializable]
@@ -49,7 +57,6 @@ public class CharacterUpgradeApi : MonoBehaviour
         public int attack_upgrade_lvl;
         public int defense_upgrade_lvl;
 
-        // 현재 누른 버튼에 해당하는 강화 레벨
         public int upgrade_lvl;
 
         public long gold;
@@ -69,33 +76,53 @@ public class CharacterUpgradeApi : MonoBehaviour
 
         Instance = this;
 
-        if (userCreateApi == null)
-        {
-            userCreateApi = FindFirstObjectByType<UserCreateApi>();
-        }
+        if (battleRewardApi == null)
+            battleRewardApi = BattleRewardApi.Instance;
+
+        if (battleRewardApi == null)
+            battleRewardApi = FindFirstObjectByType<BattleRewardApi>();
     }
 
     public long GetUserId()
     {
-        if (userCreateApi != null && userCreateApi.CurrentUserId > 0)
+        // 1. Inspector에서 강제 지정한 ID
+        // 평소에는 반드시 0으로 둬야 함.
+        if (userIdOverride > 0)
         {
-            return userCreateApi.CurrentUserId;
+            CurrentUser.UserId = userIdOverride;
+            return userIdOverride;
         }
 
-        if (PlayerPrefs.HasKey("TEST_USER_ID") &&
-            long.TryParse(PlayerPrefs.GetString("TEST_USER_ID"), out long testUserId))
+        // 2. BattleRewardApi 기준 ID 사용
+        if (battleRewardApi != null)
         {
-            return testUserId;
+            int apiUserId = battleRewardApi.GetUserId();
+
+            if (apiUserId > 0)
+            {
+                CurrentUser.UserId = apiUserId;
+                return apiUserId;
+            }
         }
 
-        int savedUserId = PlayerPrefs.GetInt("user_id", 0);
+        // 3. TitleManager가 씬 이동 전에 넣어둔 현재 유저 ID
+        if (CurrentUser.UserId > 0)
+        {
+            return CurrentUser.UserId;
+        }
+
+        // 4. PlayerPrefs에 저장된 USER_ID
+        int savedUserId = PlayerPrefs.GetInt(USER_ID_KEY, -1);
 
         if (savedUserId > 0)
         {
+            CurrentUser.UserId = savedUserId;
             return savedUserId;
         }
 
-        return 0;
+        // 5. 예전 키 정리용 fallback
+        // 기존 user_id 또는 TEST_USER_ID가 남아 있어도 이제는 사용하지 않는 게 원칙임.
+        return -1;
     }
 
     public IEnumerator LoadUserStatus(
@@ -106,7 +133,11 @@ public class CharacterUpgradeApi : MonoBehaviour
 
         if (userId <= 0)
         {
-            Debug.LogError("[CharacterUpgradeApi] user_id가 없습니다.");
+            Debug.LogError(
+                "[CharacterUpgradeApi] USER_ID가 없습니다. " +
+                "TitleScene에서 게임 시작 버튼으로 유저를 먼저 생성해야 합니다."
+            );
+
             onComplete?.Invoke(false, null);
             yield break;
         }
@@ -153,12 +184,21 @@ public class CharacterUpgradeApi : MonoBehaviour
         }
     }
 
+
+    public enum UpgradeStatType
+    {
+        Hp,
+        Attack,
+        Defense
+    }
+    
     public IEnumerator UpgradeCharacter(
-        bool isHealthUpgrade,
+        UpgradeStatType upgradeType,
         int currentUpgradeLvl,
         int costGold,
         int nextMaxHp,
         int nextAttackPower,
+        int nextDefensePower,
         Action<bool, CharacterUpgradeResponse> onComplete
     )
     {
@@ -166,14 +206,36 @@ public class CharacterUpgradeApi : MonoBehaviour
 
         if (userId <= 0)
         {
-            Debug.LogError("[CharacterUpgradeApi] user_id가 없습니다.");
+            Debug.LogError(
+                "[CharacterUpgradeApi] USER_ID가 없습니다. " +
+                "TitleScene에서 게임 시작 버튼으로 유저를 먼저 생성해야 합니다."
+            );
+
             onComplete?.Invoke(false, null);
             yield break;
         }
 
-        string endpoint = isHealthUpgrade
-            ? $"/users/{userId}/status/upgrade-hp/"
-            : $"/users/{userId}/status/upgrade-attack/";
+        string endpoint;
+
+        switch (upgradeType)
+        {
+            case UpgradeStatType.Hp:
+                endpoint = $"/users/{userId}/status/upgrade-hp/";
+                break;
+
+            case UpgradeStatType.Attack:
+                endpoint = $"/users/{userId}/status/upgrade-attack/";
+                break;
+
+            case UpgradeStatType.Defense:
+                endpoint = $"/users/{userId}/status/upgrade-defense/";
+                break;
+
+            default:
+                Debug.LogError("[CharacterUpgradeApi] 알 수 없는 강화 타입입니다.");
+                onComplete?.Invoke(false, null);
+                yield break;
+        }
 
         string url = $"{baseUrl}{endpoint}";
 
@@ -230,19 +292,42 @@ public class CharacterUpgradeApi : MonoBehaviour
 
             response.success = true;
 
-            response.upgrade_lvl = isHealthUpgrade
-                ? response.hp_upgrade_lvl
-                : response.attack_upgrade_lvl;
+            switch (upgradeType)
+            {
+                case UpgradeStatType.Hp:
+                    response.upgrade_lvl = response.hp_upgrade_lvl;
+                    break;
+
+                case UpgradeStatType.Attack:
+                    response.upgrade_lvl = response.attack_upgrade_lvl;
+                    break;
+
+                case UpgradeStatType.Defense:
+                    response.upgrade_lvl = response.defense_upgrade_lvl;
+                    break;
+            }
 
             if (string.IsNullOrEmpty(response.message))
             {
-                response.message = isHealthUpgrade
-                    ? "체력 강화 완료"
-                    : "공격력 강화 완료";
+                switch (upgradeType)
+                {
+                    case UpgradeStatType.Hp:
+                        response.message = "체력 강화 완료";
+                        break;
+
+                    case UpgradeStatType.Attack:
+                        response.message = "공격력 강화 완료";
+                        break;
+
+                    case UpgradeStatType.Defense:
+                        response.message = "방어력 강화 완료";
+                        break;
+                }
             }
 
             Debug.Log(
                 $"[CharacterUpgradeApi] 강화 성공\n" +
+                $"UserId: {response.user_id}\n" +
                 $"Type: {response.upgrade_type}\n" +
                 $"HP: {response.max_hp}, ATK: {response.attack_power}, DEF: {response.defense_power}\n" +
                 $"HP_Lv: {response.hp_upgrade_lvl}, ATK_Lv: {response.attack_upgrade_lvl}, DEF_Lv: {response.defense_upgrade_lvl}\n" +
@@ -253,4 +338,6 @@ public class CharacterUpgradeApi : MonoBehaviour
             onComplete?.Invoke(true, response);
         }
     }
+
+
 }

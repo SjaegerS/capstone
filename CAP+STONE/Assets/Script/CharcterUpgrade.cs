@@ -19,8 +19,13 @@ public class CharcterUpgrade : MonoBehaviour
     [SerializeField] private TextMeshProUGUI attackUpgradeLvlText;
     [SerializeField] private TextMeshProUGUI attackUpgradeCostText;
 
-    [Header("Optional UI")]
+    [Header("Defense Upgrade UI")]
+    [SerializeField] private Button defenseUpgradeButton;
     [SerializeField] private TextMeshProUGUI defenseValueText;
+    [SerializeField] private TextMeshProUGUI defenseUpgradeLvlText;
+    [SerializeField] private TextMeshProUGUI defenseUpgradeCostText;
+
+    [Header("Common UI")]
     [SerializeField] private TextMeshProUGUI goldText;
     [SerializeField] private TextMeshProUGUI messageText;
 
@@ -36,18 +41,15 @@ public class CharcterUpgrade : MonoBehaviour
     private int defenseUpgradeLvl = 1;
 
     private bool isLoading = false;
+    private bool isUpgrading = false;
 
     private void Awake()
     {
         if (characterUpgradeApi == null)
-        {
             characterUpgradeApi = CharacterUpgradeApi.Instance;
-        }
 
         if (characterUpgradeApi == null)
-        {
             characterUpgradeApi = FindFirstObjectByType<CharacterUpgradeApi>();
-        }
 
         if (hpUpgradeButton != null)
         {
@@ -61,10 +63,14 @@ public class CharcterUpgrade : MonoBehaviour
             attackUpgradeButton.onClick.AddListener(OnClickAttackUpgrade);
         }
 
-        if (battleManager == null)
+        if (defenseUpgradeButton != null)
         {
-            battleManager = FindFirstObjectByType<BattleManager>();
+            defenseUpgradeButton.onClick.RemoveListener(OnClickDefenseUpgrade);
+            defenseUpgradeButton.onClick.AddListener(OnClickDefenseUpgrade);
         }
+
+        if (battleManager == null)
+            battleManager = FindFirstObjectByType<BattleManager>();
     }
 
     private void Start()
@@ -83,9 +89,7 @@ public class CharcterUpgrade : MonoBehaviour
             return;
 
         if (characterUpgradeApi == null)
-        {
             characterUpgradeApi = FindFirstObjectByType<CharacterUpgradeApi>();
-        }
 
         if (characterUpgradeApi == null)
         {
@@ -116,88 +120,93 @@ public class CharcterUpgrade : MonoBehaviour
         ));
     }
 
-    private void OnClickHpUpgrade()
+    private void RequestUpgrade(
+        CharacterUpgradeApi.UpgradeStatType upgradeType,
+        int upgradeLvl,
+        string label
+    )
     {
-        if (characterUpgradeApi == null)
+        if (isUpgrading)
         {
-            characterUpgradeApi = FindFirstObjectByType<CharacterUpgradeApi>();
-        }
-
-        if (characterUpgradeApi == null)
-        {
-            Debug.LogError("[CharcterUpgrade] CharacterUpgradeApi가 없습니다.");
-            SetMessage("CharacterUpgradeApi가 없습니다.");
+            Debug.LogWarning($"[CharcterUpgrade] 이미 강화 요청 중입니다. {label} 강화 중복 요청 차단");
             return;
         }
 
-        SetButtonsInteractable(false);
-        SetMessage("체력 강화 중...");
+        if (!ValidateApi())
+            return;
 
-        int currentCost = CalculateClientPreviewCost(hpUpgradeLvl);
+        isUpgrading = true;
+        SetButtonsInteractable(false);
+        SetMessage($"{label} 강화 중...");
+
+        int currentCost = CalculateClientPreviewCost(upgradeLvl);
+
+        Debug.Log($"[UPGRADE REQUEST] Type={upgradeType}, Lv={upgradeLvl}, Cost={currentCost}");
 
         StartCoroutine(characterUpgradeApi.UpgradeCharacter(
-            true,
-            hpUpgradeLvl,
+            upgradeType,
+            upgradeLvl,
             currentCost,
+            0,
             0,
             0,
             (success, response) =>
             {
+                isUpgrading = false;
                 SetButtonsInteractable(true);
 
                 if (!success || response == null)
                 {
-                    Debug.LogError("[CharcterUpgrade] 체력 강화 실패");
-                    SetMessage("체력 강화 실패");
+                    Debug.LogError($"[CharcterUpgrade] {label} 강화 실패");
+                    SetMessage($"{label} 강화 실패");
                     return;
                 }
 
+                Debug.Log(
+                    $"[UPGRADE RESPONSE] " +
+                    $"Type={upgradeType}, " +
+                    $"HP_Lv={response.hp_upgrade_lvl}, " +
+                    $"ATK_Lv={response.attack_upgrade_lvl}, " +
+                    $"DEF_Lv={response.defense_upgrade_lvl}, " +
+                    $"HP={response.max_hp}, " +
+                    $"ATK={response.attack_power}, " +
+                    $"DEF={response.defense_power}"
+                );
+
                 ApplyUpgradeResponseToUI(response);
-                SetMessage("체력 강화 완료");
+                SetMessage($"{label} 강화 완료");
             }
         ));
     }
 
+    private void OnClickHpUpgrade()
+    {
+        RequestUpgrade(CharacterUpgradeApi.UpgradeStatType.Hp, hpUpgradeLvl, "체력");
+    }
+
     private void OnClickAttackUpgrade()
     {
+        RequestUpgrade(CharacterUpgradeApi.UpgradeStatType.Attack, attackUpgradeLvl, "공격력");
+    }
+
+    private void OnClickDefenseUpgrade()
+    {
+        RequestUpgrade(CharacterUpgradeApi.UpgradeStatType.Defense, defenseUpgradeLvl, "방어력");
+    }
+
+    private bool ValidateApi()
+    {
         if (characterUpgradeApi == null)
-        {
             characterUpgradeApi = FindFirstObjectByType<CharacterUpgradeApi>();
-        }
 
         if (characterUpgradeApi == null)
         {
             Debug.LogError("[CharcterUpgrade] CharacterUpgradeApi가 없습니다.");
             SetMessage("CharacterUpgradeApi가 없습니다.");
-            return;
+            return false;
         }
 
-        SetButtonsInteractable(false);
-        SetMessage("공격력 강화 중...");
-
-        int currentCost = CalculateClientPreviewCost(attackUpgradeLvl);
-
-        StartCoroutine(characterUpgradeApi.UpgradeCharacter(
-            false,
-            attackUpgradeLvl,
-            currentCost,
-            0,
-            0,
-            (success, response) =>
-            {
-                SetButtonsInteractable(true);
-
-                if (!success || response == null)
-                {
-                    Debug.LogError("[CharcterUpgrade] 공격력 강화 실패");
-                    SetMessage("공격력 강화 실패");
-                    return;
-                }
-
-                ApplyUpgradeResponseToUI(response);
-                SetMessage("공격력 강화 완료");
-            }
-        ));
+        return true;
     }
 
     private void ApplyStatusToUI(CharacterUpgradeApi.UserStatusResponse status)
@@ -206,16 +215,14 @@ public class CharcterUpgrade : MonoBehaviour
         currentAttackPower = status.attack_power;
         currentDefensePower = status.defense_power;
 
-        hpUpgradeLvl = status.hp_upgrade_lvl;
-        attackUpgradeLvl = status.attack_upgrade_lvl;
-        defenseUpgradeLvl = status.defense_upgrade_lvl;
+        hpUpgradeLvl = Mathf.Max(1, status.hp_upgrade_lvl);
+        attackUpgradeLvl = Mathf.Max(1, status.attack_upgrade_lvl);
+        defenseUpgradeLvl = Mathf.Max(1, status.defense_upgrade_lvl);
 
         RefreshAllTexts();
 
         if (battleManager == null)
-        {
             battleManager = FindFirstObjectByType<BattleManager>();
-        }
 
         if (battleManager != null)
         {
@@ -224,12 +231,16 @@ public class CharcterUpgrade : MonoBehaviour
                 status.attack_power,
                 status.defense_power,
                 status.hp_upgrade_lvl,
-                status.attack_upgrade_lvl
+                status.attack_upgrade_lvl,
+                status.defense_upgrade_lvl
             );
         }
+
+        GoldManager.Instance?.SetGold(status.gold);
+        CurrencyUIManager.Instance?.SetGold(status.gold);
     }
 
-   private void ApplyUpgradeResponseToUI(CharacterUpgradeApi.CharacterUpgradeResponse response)
+    private void ApplyUpgradeResponseToUI(CharacterUpgradeApi.CharacterUpgradeResponse response)
     {
         currentMaxHp = response.max_hp;
         currentAttackPower = response.attack_power;
@@ -242,17 +253,13 @@ public class CharcterUpgrade : MonoBehaviour
         RefreshAllTexts();
 
         if (goldText != null)
-        {
             goldText.text = $"Gold: {response.gold}";
-        }
 
         GoldManager.Instance?.SetGold(response.gold);
         CurrencyUIManager.Instance?.SetGold(response.gold);
 
         if (battleManager == null)
-        {
             battleManager = FindFirstObjectByType<BattleManager>();
-        }
 
         if (battleManager != null)
         {
@@ -261,7 +268,8 @@ public class CharcterUpgrade : MonoBehaviour
                 response.attack_power,
                 response.defense_power,
                 response.hp_upgrade_lvl,
-                response.attack_upgrade_lvl
+                response.attack_upgrade_lvl,
+                response.defense_upgrade_lvl
             );
         }
     }
@@ -269,39 +277,31 @@ public class CharcterUpgrade : MonoBehaviour
     private void RefreshAllTexts()
     {
         if (hpValueText != null)
-        {
             hpValueText.text = $"체력: {currentMaxHp}";
-        }
 
         if (attackValueText != null)
-        {
             attackValueText.text = $"공격력: {currentAttackPower}";
-        }
 
         if (defenseValueText != null)
-        {
             defenseValueText.text = $"방어력: {currentDefensePower}";
-        }
 
         if (hpUpgradeLvlText != null)
-        {
             hpUpgradeLvlText.text = $"Lv.{hpUpgradeLvl}";
-        }
 
         if (attackUpgradeLvlText != null)
-        {
             attackUpgradeLvlText.text = $"Lv.{attackUpgradeLvl}";
-        }
+
+        if (defenseUpgradeLvlText != null)
+            defenseUpgradeLvlText.text = $"Lv.{defenseUpgradeLvl}";
 
         if (hpUpgradeCostText != null)
-        {
             hpUpgradeCostText.text = $"{CalculateClientPreviewCost(hpUpgradeLvl)} Gold";
-        }
 
         if (attackUpgradeCostText != null)
-        {
             attackUpgradeCostText.text = $"{CalculateClientPreviewCost(attackUpgradeLvl)} Gold";
-        }
+
+        if (defenseUpgradeCostText != null)
+            defenseUpgradeCostText.text = $"{CalculateClientPreviewCost(defenseUpgradeLvl)} Gold";
     }
 
     private int CalculateClientPreviewCost(int upgradeLvl)
@@ -312,27 +312,22 @@ public class CharcterUpgrade : MonoBehaviour
     private void SetButtonsInteractable(bool value)
     {
         if (hpUpgradeButton != null)
-        {
             hpUpgradeButton.interactable = value;
-        }
 
         if (attackUpgradeButton != null)
-        {
             attackUpgradeButton.interactable = value;
-        }
+
+        if (defenseUpgradeButton != null)
+            defenseUpgradeButton.interactable = value;
     }
 
     private void SetMessage(string message)
     {
         if (messageText != null)
-        {
             messageText.text = message;
-        }
 
         if (!string.IsNullOrEmpty(message))
-        {
             Debug.Log($"[CharcterUpgrade] {message}");
-        }
     }
 
     public void RefreshFromServer()

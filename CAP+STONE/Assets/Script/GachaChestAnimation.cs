@@ -28,8 +28,13 @@ public class GachaChestAnimation : MonoBehaviour
     [SerializeField] private int fiftyFivePullGemCost = 5000;
 
     [Header("API")]
-    [SerializeField] private UserCreateApi userCreateApi;
     [SerializeField] private string baseUrl = "http://127.0.0.1:8000";
+    [SerializeField] private BattleRewardApi battleRewardApi;
+
+    [Header("Gacha Type")]
+    [SerializeField] private GachaItemType targetItemType = GachaItemType.Weapon;
+
+    private const string USER_ID_KEY = "USER_ID";
 
     private ItemDto[] cachedItems;
 
@@ -62,6 +67,12 @@ public class GachaChestAnimation : MonoBehaviour
         SuperRare
     }
 
+    private enum GachaItemType
+    {
+        Weapon,
+        Armor
+    }
+
     private struct GachaResult
     {
         public Sprite Sprite;
@@ -85,19 +96,13 @@ public class GachaChestAnimation : MonoBehaviour
     private readonly Dictionary<Button, UnityAction> buttonListeners = new Dictionary<Button, UnityAction>();
     private GameObject overlayObject;
 
-    #region Unity Lifecycle
-
     private void Awake()
     {
-        if (userCreateApi == null)
-        {
-            userCreateApi = FindFirstObjectByType<UserCreateApi>();
+        if (battleRewardApi == null)
+            battleRewardApi = BattleRewardApi.Instance;
 
-            if (userCreateApi == null)
-            {
-                Debug.LogError("씬에서 UserCreateApi를 찾을 수 없습니다. ApiManager에 UserCreateApi가 붙어 있는지 확인하세요.");
-            }
-        }
+        if (battleRewardApi == null)
+            battleRewardApi = FindFirstObjectByType<BattleRewardApi>();
 
         gachaButtons = GetComponentsInChildren<Button>(true);
 
@@ -121,16 +126,12 @@ public class GachaChestAnimation : MonoBehaviour
         CleanupPlayback();
 
         if (gachaButtons == null)
-        {
             return;
-        }
 
         foreach (Button button in gachaButtons)
         {
             if (button != null && buttonListeners.TryGetValue(button, out UnityAction listener))
-            {
                 button.onClick.RemoveListener(listener);
-            }
         }
 
         buttonListeners.Clear();
@@ -141,9 +142,32 @@ public class GachaChestAnimation : MonoBehaviour
         CleanupPlayback();
     }
 
-    #endregion
+    private long GetUserId()
+    {
+        if (battleRewardApi != null)
+        {
+            int apiUserId = battleRewardApi.GetUserId();
 
-    #region Public Entry Points
+            if (apiUserId > 0)
+            {
+                CurrentUser.UserId = apiUserId;
+                return apiUserId;
+            }
+        }
+
+        if (CurrentUser.UserId > 0)
+            return CurrentUser.UserId;
+
+        int savedUserId = PlayerPrefs.GetInt(USER_ID_KEY, -1);
+
+        if (savedUserId > 0)
+        {
+            CurrentUser.UserId = savedUserId;
+            return savedUserId;
+        }
+
+        return -1;
+    }
 
     public void Play()
     {
@@ -153,45 +177,41 @@ public class GachaChestAnimation : MonoBehaviour
     public void Play(int pullCount)
     {
         if (!isActiveAndEnabled || isPlaying)
-        {
             return;
-        }
 
-        if (userCreateApi == null)
-        {
-            Debug.LogError("UserCreateApi가 연결되지 않았습니다.");
-            return;
-        }
+        long userId = GetUserId();
 
-        if (userCreateApi.CurrentUserId <= 0)
+        if (userId <= 0)
         {
-            Debug.LogError("생성된 유저 ID가 없습니다.");
+            Debug.LogError("[Gacha] USER_ID가 없습니다. TitleScene에서 게임 시작 버튼으로 유저를 먼저 생성해야 합니다.");
             return;
         }
 
         int safePullCount = Mathf.Max(1, pullCount);
-
         StartCoroutine(SpendGemsThenPlay(safePullCount));
     }
-
-    #endregion
-
-    #region Gacha Flow
 
     private IEnumerator SpendGemsThenPlay(int pullCount)
     {
         if (isPlaying)
-        {
             yield break;
-        }
 
         isPlaying = true;
         skipRequested = false;
         SetButtonsInteractable(false);
 
-        int cost = GetGemCost(pullCount);
+        long userId = GetUserId();
 
-        string url = $"{baseUrl}/users/{userCreateApi.CurrentUserId}/currency/spend-gem/";
+        if (userId <= 0)
+        {
+            Debug.LogError("[Gacha] gem 차감 실패: USER_ID가 없습니다.");
+            SetButtonsInteractable(true);
+            isPlaying = false;
+            yield break;
+        }
+
+        int cost = GetGemCost(pullCount);
+        string url = $"{baseUrl}/users/{userId}/currency/spend-gem/";
 
         SpendCurrencyRequest requestBody = new SpendCurrencyRequest
         {
@@ -221,9 +241,7 @@ public class GachaChestAnimation : MonoBehaviour
         CurrencyResponse response = JsonUtility.FromJson<CurrencyResponse>(request.downloadHandler.text);
 
         if (response != null && CurrencyUIManager.Instance != null)
-        {
             CurrencyUIManager.Instance.SetGem(response.gem);
-        }
 
         yield return StartCoroutine(PlayRoutine(pullCount));
     }
@@ -235,7 +253,6 @@ public class GachaChestAnimation : MonoBehaviour
         GachaResult[] results = RollResults(pullCount);
 
         yield return StartCoroutine(SaveResultsToDb(results));
-
         yield return StartCoroutine(SyncUserItemsFromDb());
 
         EquipmentInventoryView.RefreshAll();
@@ -288,8 +305,8 @@ public class GachaChestAnimation : MonoBehaviour
             ItemDto selectedItem = PickItemByRarity(rarity);
 
             Sprite matchedSprite = selectedItem != null
-            ? FindSpriteByItem(selectedItem, rarity)
-            : PickEquipmentSprite(rarity);
+                ? FindSpriteByItem(selectedItem, rarity)
+                : PickEquipmentSprite(rarity);
 
             results[i] = new GachaResult
             {
@@ -314,14 +331,10 @@ public class GachaChestAnimation : MonoBehaviour
         float roll = UnityEngine.Random.value;
 
         if (roll < normalRate)
-        {
             return EquipmentRarity.Normal;
-        }
 
         if (roll < normalRate + rareRate)
-        {
             return EquipmentRarity.Rare;
-        }
 
         return EquipmentRarity.SuperRare;
     }
@@ -330,7 +343,6 @@ public class GachaChestAnimation : MonoBehaviour
     {
         for (int i = 0; i < results.Length; i++)
         {
-
             if (results[i].ItemId <= 0)
             {
                 Debug.LogError("[Gacha] item_id is 0. Skipping user_item save.");
@@ -354,26 +366,28 @@ public class GachaChestAnimation : MonoBehaviour
             results[i].EnhanceLevel = savedItem.enhance_level;
             results[i].IsEquipped = savedItem.is_equipped;
             results[i].Quantity = savedItem.quantity;
-
-            // 중요: 서버가 반환한 item_id로 다시 맞춤
             results[i].ItemId = savedItem.item_id;
         }
     }
 
     private IEnumerator CreateUserItem(long itemId, Action<UserItemResponse> onSuccess)
     {
+        long userId = GetUserId();
+
+        if (userId <= 0)
+        {
+            Debug.LogError("[Gacha] user_item 저장 실패: USER_ID가 없습니다.");
+            yield break;
+        }
+
         string url = $"{baseUrl}/user-items/";
 
         UserItemCreateRequest requestBody = new UserItemCreateRequest
         {
-            user_id = userCreateApi.CurrentUserId,
+            user_id = userId,
             item_id = itemId,
-
-            // 뽑기로 새로 얻는 장비 기본값
             enhance_level = 1,
             is_equipped = false,
-
-            // 이번에 획득한 개수만 전송
             quantity = 1
         };
 
@@ -396,28 +410,26 @@ public class GachaChestAnimation : MonoBehaviour
         }
 
         UserItemResponse response = JsonUtility.FromJson<UserItemResponse>(request.downloadHandler.text);
-
         onSuccess?.Invoke(response);
     }
-
-    #endregion
-
-    #region Currency
 
     private IEnumerator LoadCurrencyWhenUserReady()
     {
         float timeout = 5f;
         float elapsed = 0f;
 
-        while ((userCreateApi == null || userCreateApi.CurrentUserId <= 0) && elapsed < timeout)
+        long userId = GetUserId();
+
+        while (userId <= 0 && elapsed < timeout)
         {
             elapsed += Time.deltaTime;
+            userId = GetUserId();
             yield return null;
         }
 
-        if (userCreateApi == null || userCreateApi.CurrentUserId <= 0)
+        if (userId <= 0)
         {
-            Debug.LogWarning("유저 ID가 준비되지 않아 currency를 불러오지 못했습니다.");
+            Debug.LogWarning("[Gacha] 유저 ID가 준비되지 않아 currency를 불러오지 못했습니다.");
             yield break;
         }
 
@@ -426,7 +438,15 @@ public class GachaChestAnimation : MonoBehaviour
 
     private IEnumerator LoadCurrencyFromDb()
     {
-        string url = $"{baseUrl}/users/{userCreateApi.CurrentUserId}/currency/";
+        long userId = GetUserId();
+
+        if (userId <= 0)
+        {
+            Debug.LogError("[Gacha] currency 조회 실패: USER_ID가 없습니다.");
+            yield break;
+        }
+
+        string url = $"{baseUrl}/users/{userId}/currency/";
 
         UnityWebRequest request = UnityWebRequest.Get(url);
 
@@ -443,50 +463,35 @@ public class GachaChestAnimation : MonoBehaviour
         CurrencyResponse response = JsonUtility.FromJson<CurrencyResponse>(request.downloadHandler.text);
 
         if (response != null)
-        {
             SetGemAmount(response.gem);
-        }
     }
 
     private void SetGemAmount(long amount)
     {
         if (gemText == null)
-        {
             return;
-        }
 
         gemText.textWrappingMode = TextWrappingModes.NoWrap;
         gemText.overflowMode = TextOverflowModes.Overflow;
         gemText.alignment = TextAlignmentOptions.Center;
         gemText.text = Math.Max(0L, amount).ToString();
-
     }
 
     private int GetGemCost(int pullCount)
     {
         if (pullCount >= 55)
-        {
             return fiftyFivePullGemCost;
-        }
 
         if (pullCount >= 11)
-        {
             return elevenPullGemCost;
-        }
 
         return onePullGemCost;
     }
 
-    #endregion
-
-    #region Item Cache and Mapping
-
     private IEnumerator LoadItemsIfNeeded()
     {
         if (cachedItems != null && cachedItems.Length > 0)
-        {
             yield break;
-        }
 
         string url = $"{baseUrl}/items/";
 
@@ -513,39 +518,76 @@ public class GachaChestAnimation : MonoBehaviour
     {
         if (cachedItems == null || cachedItems.Length == 0)
         {
-            Debug.LogError("cachedItems가 비어 있습니다.");
+            Debug.LogError("[Gacha] cachedItems가 비어 있습니다.");
             return null;
         }
 
         string grade = ToDbGrade(rarity);
+        string targetDbItemType = ToDbItemType(targetItemType);
 
         List<ItemDto> candidates = new List<ItemDto>();
 
         foreach (ItemDto item in cachedItems)
         {
-            if (item != null && item.grade == grade)
+            if (item == null)
+                continue;
+
+            string itemGrade = item.grade != null ? item.grade.Trim().ToUpperInvariant() : "";
+            string itemType = item.item_type != null ? item.item_type.Trim().ToUpperInvariant() : "";
+
+            bool gradeMatches = itemGrade == grade;
+            bool typeMatches = itemType == targetDbItemType;
+
+            if (gradeMatches && typeMatches)
             {
                 candidates.Add(item);
             }
         }
 
+        Debug.Log(
+            $"[Gacha] 후보 검색 결과: " +
+            $"TargetItemType={targetItemType}, " +
+            $"TargetDbType={targetDbItemType}, " +
+            $"Grade={grade}, " +
+            $"CandidateCount={candidates.Count}"
+        );
+
         if (candidates.Count == 0)
         {
-            Debug.LogError($"등급에 맞는 아이템이 없습니다. grade={grade}");
-            return cachedItems[UnityEngine.Random.Range(0, cachedItems.Length)];
+            Debug.LogError(
+                $"[Gacha] 조건에 맞는 아이템이 없습니다. " +
+                $"grade={grade}, item_type={targetDbItemType}"
+            );
+
+            return null;
         }
 
-        return candidates[UnityEngine.Random.Range(0, candidates.Count)];
+        ItemDto pickedItem = candidates[UnityEngine.Random.Range(0, candidates.Count)];
+
+        Debug.Log(
+            $"[Gacha] 선택된 아이템: " +
+            $"TargetType={targetItemType}, " +
+            $"DBType={pickedItem.item_type}, " +
+            $"Grade={pickedItem.grade}, " +
+            $"ItemId={pickedItem.item_id}, " +
+            $"Name={pickedItem.item_name}, " +
+            $"ImageKey={pickedItem.image_key}"
+        );
+
+        return pickedItem;
     }
 
     private IEnumerator SyncUserItemsFromDb()
     {
-        if (userCreateApi == null || userCreateApi.CurrentUserId <= 0)
+        long userId = GetUserId();
+
+        if (userId <= 0)
         {
+            Debug.LogError("[Gacha] user_item 동기화 실패: USER_ID가 없습니다.");
             yield break;
         }
 
-        string url = $"{baseUrl}/users/{userCreateApi.CurrentUserId}/items/";
+        string url = $"{baseUrl}/users/{userId}/items/";
 
         UnityWebRequest request = UnityWebRequest.Get(url);
 
@@ -563,9 +605,7 @@ public class GachaChestAnimation : MonoBehaviour
         UserItemListResponse response = JsonUtility.FromJson<UserItemListResponse>(wrappedJson);
 
         if (response == null || response.items == null)
-        {
             yield break;
-        }
 
         EquipmentInventory.ResetAll();
 
@@ -574,30 +614,26 @@ public class GachaChestAnimation : MonoBehaviour
             ItemDto item = FindCachedItemById(userItem.item_id);
 
             if (item == null)
-            {
                 continue;
-            }
 
             EquipmentRarity rarity = ToEquipmentRarity(item.grade);
             Sprite sprite = FindSpriteByItem(item, rarity);
 
             if (sprite == null)
-            {
                 continue;
-            }
 
             EquipmentInventory.ApplyServerUserItem(
-            sprite,
-            (int)userItem.user_item_id,
-            (int)userItem.item_id,
-            userItem.quantity,
-            userItem.enhance_level
+                sprite,
+                (int)userItem.user_item_id,
+                (int)userItem.item_id,
+                userItem.quantity,
+                userItem.enhance_level
             );
 
             EquipmentInventoryRecord record = EquipmentInventory.GetRecord(sprite);
             record.SetMetadata(
-            GetInventoryCategoryFromItemType(item.item_type, sprite),
-            ToInventoryRarity(rarity)
+                GetInventoryCategoryFromItemType(item.item_type, sprite),
+                ToInventoryRarity(rarity)
             );
         }
 
@@ -607,16 +643,12 @@ public class GachaChestAnimation : MonoBehaviour
     private ItemDto FindCachedItemById(long itemId)
     {
         if (cachedItems == null)
-        {
             return null;
-        }
 
         foreach (ItemDto item in cachedItems)
         {
             if (item != null && item.item_id == itemId)
-            {
                 return item;
-            }
         }
 
         return null;
@@ -625,43 +657,29 @@ public class GachaChestAnimation : MonoBehaviour
     private Sprite FindSpriteByItem(ItemDto item, EquipmentRarity rarity)
     {
         if (item == null)
-        {
             return PickEquipmentSprite(rarity);
-        }
 
         Sprite[] pool = GetPool(rarity);
-
-        string imageKey = item.image_key;
-        string itemKey = item.item_key;
-        string itemName = item.item_name;
 
         foreach (Sprite sprite in pool)
         {
             if (sprite == null)
-            {
                 continue;
-            }
 
-            if (!string.IsNullOrEmpty(imageKey) && sprite.name == imageKey)
-            {
+            if (!string.IsNullOrEmpty(item.image_key) && sprite.name == item.image_key)
                 return sprite;
-            }
 
-            if (!string.IsNullOrEmpty(itemKey) && sprite.name == itemKey)
-            {
+            if (!string.IsNullOrEmpty(item.item_key) && sprite.name == item.item_key)
                 return sprite;
-            }
 
-            if (!string.IsNullOrEmpty(itemName) && sprite.name == itemName)
-            {
+            if (!string.IsNullOrEmpty(item.item_name) && sprite.name == item.item_name)
                 return sprite;
-            }
         }
 
         Debug.LogWarning(
-        $"Sprite 매칭 실패: item_id={item.item_id}, " +
-        $"item_key={item.item_key}, image_key={item.image_key}, item_name={item.item_name}. " +
-        "등급 풀에서 임시 스프라이트를 사용합니다."
+            $"Sprite 매칭 실패: item_id={item.item_id}, " +
+            $"item_key={item.item_key}, image_key={item.image_key}, item_name={item.item_name}. " +
+            "등급 풀에서 임시 스프라이트를 사용합니다."
         );
 
         return PickEquipmentSprite(rarity);
@@ -672,18 +690,12 @@ public class GachaChestAnimation : MonoBehaviour
         Sprite[] pool = GetPool(rarity);
 
         if (pool.Length == 0)
-        {
             pool = GetPool(EquipmentRarity.Normal);
-        }
 
         if (pool.Length == 0)
-        {
             return null;
-        }
 
-        Sprite selected = pool[UnityEngine.Random.Range(0, pool.Length)];
-
-        return selected;
+        return pool[UnityEngine.Random.Range(0, pool.Length)];
     }
 
     private Sprite PickFirstAvailableEquipmentSprite()
@@ -698,9 +710,7 @@ public class GachaChestAnimation : MonoBehaviour
         foreach (Sprite[] pool in pools)
         {
             if (pool != null && pool.Length > 0)
-            {
                 return pool[0];
-            }
         }
 
         return null;
@@ -711,26 +721,25 @@ public class GachaChestAnimation : MonoBehaviour
         switch (rarity)
         {
             case EquipmentRarity.SuperRare:
-            return superRareEquipmentSprites ?? new Sprite[0];
+                return superRareEquipmentSprites ?? new Sprite[0];
+
             case EquipmentRarity.Rare:
-            return rareEquipmentSprites ?? new Sprite[0];
+                return rareEquipmentSprites ?? new Sprite[0];
+
             default:
-            return normalEquipmentSprites ?? new Sprite[0];
+                return normalEquipmentSprites ?? new Sprite[0];
         }
     }
 
     private Sprite EnsureResultSprite(GachaResult result)
     {
         if (result.Sprite != null)
-        {
             return result.Sprite;
-        }
 
         Sprite fallback = PickEquipmentSprite(result.Rarity);
+
         if (fallback != null)
-        {
             return fallback;
-        }
 
         fallback = PickFirstAvailableEquipmentSprite();
         return fallback != null ? fallback : defaultEquipmentSprite;
@@ -741,11 +750,26 @@ public class GachaChestAnimation : MonoBehaviour
         switch (rarity)
         {
             case EquipmentRarity.SuperRare:
-            return "SUPER_RARE";
+                return "SUPER_RARE";
+
             case EquipmentRarity.Rare:
-            return "RARE";
+                return "RARE";
+
             default:
-            return "NORMAL";
+                return "NORMAL";
+        }
+    }
+
+    private string ToDbItemType(GachaItemType type)
+    {
+        switch (type)
+        {
+            case GachaItemType.Armor:
+                return "ARMOR";
+
+            case GachaItemType.Weapon:
+            default:
+                return "WEAPON";
         }
     }
 
@@ -754,13 +778,13 @@ public class GachaChestAnimation : MonoBehaviour
         switch (grade)
         {
             case "SUPER_RARE":
-            return EquipmentRarity.SuperRare;
+                return EquipmentRarity.SuperRare;
 
             case "RARE":
-            return EquipmentRarity.Rare;
+                return EquipmentRarity.Rare;
 
             default:
-            return EquipmentRarity.Normal;
+                return EquipmentRarity.Normal;
         }
     }
 
@@ -769,11 +793,13 @@ public class GachaChestAnimation : MonoBehaviour
         switch (rarity)
         {
             case EquipmentRarity.SuperRare:
-            return EquipmentRarityGrade.SuperRare;
+                return EquipmentRarityGrade.SuperRare;
+
             case EquipmentRarity.Rare:
-            return EquipmentRarityGrade.Rare;
+                return EquipmentRarityGrade.Rare;
+
             default:
-            return EquipmentRarityGrade.Normal;
+                return EquipmentRarityGrade.Normal;
         }
     }
 
@@ -784,30 +810,28 @@ public class GachaChestAnimation : MonoBehaviour
             string lowerType = itemType.ToLowerInvariant();
 
             if (lowerType.Contains("weapon") || lowerType.Contains("무기"))
-            {
                 return EquipmentCategory.Weapon;
-            }
 
             if (lowerType.Contains("armor") || lowerType.Contains("방어구"))
-            {
                 return EquipmentCategory.Armor;
-            }
         }
 
         if (sprite != null)
         {
             string lowerName = sprite.name.ToLowerInvariant();
 
-            if (lowerName.Contains("wp") ||
-            lowerName.Contains("weapon") ||
-            lowerName.Contains("sword") ||
-            lowerName.Contains("axe") ||
-            lowerName.Contains("bow") ||
-            lowerName.Contains("spear") ||
-            lowerName.Contains("staff") ||
-            lowerName.Contains("blunt") ||
-            lowerName.Contains("fist") ||
-            lowerName.Contains("sickle"))
+            if (
+                lowerName.Contains("wp") ||
+                lowerName.Contains("weapon") ||
+                lowerName.Contains("sword") ||
+                lowerName.Contains("axe") ||
+                lowerName.Contains("bow") ||
+                lowerName.Contains("spear") ||
+                lowerName.Contains("staff") ||
+                lowerName.Contains("blunt") ||
+                lowerName.Contains("fist") ||
+                lowerName.Contains("sickle")
+            )
             {
                 return EquipmentCategory.Weapon;
             }
@@ -816,16 +840,19 @@ public class GachaChestAnimation : MonoBehaviour
         return EquipmentCategory.Armor;
     }
 
-    #endregion
-
-    #region Result Overlay UI
-
     private RectTransform CreateOverlay()
     {
         Canvas canvas = GetComponentInParent<Canvas>();
         Transform parent = canvas != null ? canvas.transform : transform.root;
 
-        overlayObject = new GameObject("GachaChestAnimationOverlay", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(Button));
+        overlayObject = new GameObject(
+            "GachaChestAnimationOverlay",
+            typeof(RectTransform),
+            typeof(CanvasRenderer),
+            typeof(Image),
+            typeof(Button)
+        );
+
         overlayObject.transform.SetParent(parent, false);
         overlayObject.transform.SetAsLastSibling();
 
@@ -849,14 +876,18 @@ public class GachaChestAnimation : MonoBehaviour
     private void RequestSkip()
     {
         if (isPlaying)
-        {
             skipRequested = true;
-        }
     }
 
     private IEnumerator RevealResults(RectTransform overlay, GachaResult[] results)
     {
-        RectTransform resultRoot = CreateContainer("GachaResultRoot", overlay, GetResultRootSize(overlay, results.Length), resultStartPosition);
+        RectTransform resultRoot = CreateContainer(
+            "GachaResultRoot",
+            overlay,
+            GetResultRootSize(overlay, results.Length),
+            resultStartPosition
+        );
+
         GridLayoutGroup grid = resultRoot.gameObject.AddComponent<GridLayoutGroup>();
         int columns = GetResultColumns(results.Length);
         float gap = 18f;
@@ -876,12 +907,11 @@ public class GachaChestAnimation : MonoBehaviour
             slot.localScale = skipRequested ? Vector3.one : Vector3.one * 0.55f;
 
             if (skipRequested)
-            {
                 continue;
-            }
 
             float elapsed = 0f;
             const float revealDuration = 0.08f;
+
             while (elapsed < revealDuration && !skipRequested)
             {
                 elapsed += Time.unscaledDeltaTime;
@@ -893,6 +923,7 @@ public class GachaChestAnimation : MonoBehaviour
 
             slotGroup.alpha = 1f;
             slot.localScale = Vector3.one;
+
             yield return WaitRealtime(results.Length > 11 ? 0.025f : 0.06f);
 
             if (skipRequested)
@@ -935,21 +966,21 @@ public class GachaChestAnimation : MonoBehaviour
         int columns = GetResultColumns(resultCount);
         int rows = Mathf.Max(1, Mathf.CeilToInt((float)resultCount / columns));
         float width = Mathf.Max(overlay.rect.width * 0.96f, 420f);
-        float height = Mathf.Min(overlay.rect.height * 0.86f, rows * GetLargeResultCellSize(overlay.rect.width, columns, 18f) + (rows - 1) * 18f);
+        float height = Mathf.Min(
+            overlay.rect.height * 0.86f,
+            rows * GetLargeResultCellSize(overlay.rect.width, columns, 18f) + (rows - 1) * 18f
+        );
+
         return new Vector2(width, height);
     }
 
     private int GetResultColumns(int resultCount)
     {
         if (resultCount <= 1)
-        {
             return 1;
-        }
 
         if (resultCount >= 55)
-        {
             return 8;
-        }
 
         return Mathf.Min(resultCount, 5);
     }
@@ -959,6 +990,7 @@ public class GachaChestAnimation : MonoBehaviour
         int rows = Mathf.Max(1, Mathf.CeilToInt((float)resultCount / columns));
         float widthSize = (rootSize.x - gap * (columns - 1)) / columns;
         float heightSize = (rootSize.y - gap * (rows - 1)) / rows;
+
         return Mathf.Clamp(Mathf.Min(widthSize, heightSize), 52f, 170f);
     }
 
@@ -973,15 +1005,24 @@ public class GachaChestAnimation : MonoBehaviour
         switch (rarity)
         {
             case EquipmentRarity.SuperRare:
-            return new Color(1f, 0.12f, 0.08f, 0.82f);
+                return new Color(1f, 0.12f, 0.08f, 0.82f);
+
             case EquipmentRarity.Rare:
-            return new Color(0.1f, 0.85f, 0.28f, 0.82f);
+                return new Color(0.1f, 0.85f, 0.28f, 0.82f);
+
             default:
-            return new Color(1f, 1f, 1f, 0.78f);
+                return new Color(1f, 1f, 1f, 0.78f);
         }
     }
 
-    private RectTransform CreateImage(string objectName, Transform parent, Sprite sprite, Vector2 size, Vector2 anchoredPosition, bool preserveAspect)
+    private RectTransform CreateImage(
+        string objectName,
+        Transform parent,
+        Sprite sprite,
+        Vector2 size,
+        Vector2 anchoredPosition,
+        bool preserveAspect
+    )
     {
         GameObject imageObject = new GameObject(objectName, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         imageObject.transform.SetParent(parent, false);
@@ -1019,7 +1060,11 @@ public class GachaChestAnimation : MonoBehaviour
 
     private Vector2 GetScreenLightSize(RectTransform overlay)
     {
-        float size = Mathf.Max(Mathf.Max(overlay.rect.width, overlay.rect.height), Mathf.Max(innerLightSize.x, innerLightSize.y));
+        float size = Mathf.Max(
+            Mathf.Max(overlay.rect.width, overlay.rect.height),
+            Mathf.Max(innerLightSize.x, innerLightSize.y)
+        );
+
         return new Vector2(size, size);
     }
 
@@ -1037,10 +1082,6 @@ public class GachaChestAnimation : MonoBehaviour
 
         return rect;
     }
-
-    #endregion
-
-    #region Animation
 
     private IEnumerator ShakeChest(RectTransform chestRoot)
     {
@@ -1070,7 +1111,13 @@ public class GachaChestAnimation : MonoBehaviour
         chestRoot.localScale = startScale;
     }
 
-    private IEnumerator OpenChest(CanvasGroup closedGroup, CanvasGroup openGroup, RectTransform openChest, RectTransform light, CanvasGroup lightGroup)
+    private IEnumerator OpenChest(
+        CanvasGroup closedGroup,
+        CanvasGroup openGroup,
+        RectTransform openChest,
+        RectTransform light,
+        CanvasGroup lightGroup
+    )
     {
         Vector3 lightStartScale = Vector3.one * 0.25f;
         Vector3 lightEndScale = Vector3.one * 0.95f;
@@ -1154,9 +1201,7 @@ public class GachaChestAnimation : MonoBehaviour
         foreach (GachaResult result in results)
         {
             if (result.Rarity > highest)
-            {
                 highest = result.Rarity;
-            }
         }
 
         return highest;
@@ -1167,11 +1212,13 @@ public class GachaChestAnimation : MonoBehaviour
         switch (rarity)
         {
             case EquipmentRarity.SuperRare:
-            return superRareLightColor;
+                return superRareLightColor;
+
             case EquipmentRarity.Rare:
-            return rareLightColor;
+                return rareLightColor;
+
             default:
-            return normalLightColor;
+                return normalLightColor;
         }
     }
 
@@ -1179,33 +1226,25 @@ public class GachaChestAnimation : MonoBehaviour
     {
         const float c1 = 1.70158f;
         const float c3 = c1 + 1f;
+
         return 1f + c3 * Mathf.Pow(t - 1f, 3f) + c1 * Mathf.Pow(t - 1f, 2f);
     }
-
-    #endregion
-
-    #region Buttons and Cleanup
 
     private int GetPullCount(Button button)
     {
         if (button == null)
-        {
             return 1;
-        }
 
         List<Button> orderedButtons = new List<Button>(gachaButtons);
         orderedButtons.Sort((left, right) => GetButtonY(right).CompareTo(GetButtonY(left)));
 
         int index = orderedButtons.IndexOf(button);
+
         if (index == 1)
-        {
             return 11;
-        }
 
         if (index == 2)
-        {
             return 55;
-        }
 
         return 1;
     }
@@ -1213,10 +1252,9 @@ public class GachaChestAnimation : MonoBehaviour
     private float GetButtonY(Button button)
     {
         RectTransform rectTransform = button.transform as RectTransform;
+
         if (rectTransform == null)
-        {
             return button.transform.position.y;
-        }
 
         return rectTransform.position.y;
     }
@@ -1224,25 +1262,19 @@ public class GachaChestAnimation : MonoBehaviour
     private void SetButtonsInteractable(bool interactable)
     {
         if (gachaButtons == null)
-        {
             return;
-        }
 
         foreach (Button button in gachaButtons)
         {
             if (button != null)
-            {
                 button.interactable = interactable;
-            }
         }
     }
 
     private void CleanupPlayback()
     {
         if (!isPlaying)
-        {
             return;
-        }
 
         StopAllCoroutines();
 
@@ -1260,15 +1292,10 @@ public class GachaChestAnimation : MonoBehaviour
     private void RefreshBattlePlayerStats()
     {
         BattleManager battleManager = FindFirstObjectByType<BattleManager>();
+
         if (battleManager != null)
-        {
             battleManager.RefreshPlayerStats();
-        }
     }
-
-    #endregion
-
-    #region DTO
 
     [Serializable]
     private class ItemListResponse
@@ -1330,6 +1357,4 @@ public class GachaChestAnimation : MonoBehaviour
         public long gem;
         public string updated_at;
     }
-
-    #endregion
 }

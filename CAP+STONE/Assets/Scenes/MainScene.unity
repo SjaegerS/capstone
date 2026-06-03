@@ -1114,6 +1114,10 @@ PrefabInstance:
       propertyPath: gemText
       value: 
       objectReference: {fileID: 1784306370}
+    - target: {fileID: 884100000000000001, guid: e2f66b73d8510c445877888252bc61a6, type: 3}
+      propertyPath: targetItemType
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 1018736951697813802, guid: e2f66b73d8510c445877888252bc61a6, type: 3}
       propertyPath: m_Pivot.x
       value: 0.5
@@ -1777,7 +1781,10 @@ MonoBehaviour:
   attackValueText: {fileID: 0}
   attackUpgradeLvlText: {fileID: 0}
   attackUpgradeCostText: {fileID: 0}
+  defenseUpgradeButton: {fileID: 0}
   defenseValueText: {fileID: 0}
+  defenseUpgradeLvlText: {fileID: 0}
+  defenseUpgradeCostText: {fileID: 0}
   goldText: {fileID: 0}
   messageText: {fileID: 0}
   battleManager: {fileID: 0}
@@ -2152,7 +2159,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4792066031241764937, guid: ad1309697828d40cf94a71770f850d73, type: 3}
       propertyPath: m_fontSize
-      value: 37.5
+      value: 37.45
       objectReference: {fileID: 0}
     - target: {fileID: 4792066031241764937, guid: ad1309697828d40cf94a71770f850d73, type: 3}
       propertyPath: m_fontSizeMax
@@ -2247,17 +2254,6 @@ PrefabInstance:
       addedObject: {fileID: 199293263}
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: ad1309697828d40cf94a71770f850d73, type: 3}
---- !u!114 &247765562 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 4496704836182632021, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
-  m_PrefabInstance: {fileID: 8134504565733745244}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f4688fdb7df04437aeb418b961361dc5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Unity.TextMeshPro::TMPro.TextMeshProUGUI
 --- !u!1 &265717483
 GameObject:
   m_ObjectHideFlags: 0
@@ -2893,7 +2889,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.75333303, y: 0.5}
   m_AnchorMax: {x: 1, y: 0.6506251}
-  m_AnchoredPosition: {x: 4, y: -21.299988}
+  m_AnchoredPosition: {x: 3.9999695, y: -21.299988}
   m_SizeDelta: {x: -122, y: -141}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &317049632
@@ -3127,7 +3123,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4792066031241764937, guid: ad1309697828d40cf94a71770f850d73, type: 3}
       propertyPath: m_fontSize
-      value: 37.5
+      value: 37.45
       objectReference: {fileID: 0}
     - target: {fileID: 4792066031241764937, guid: ad1309697828d40cf94a71770f850d73, type: 3}
       propertyPath: m_fontSizeMax
@@ -7926,17 +7922,6 @@ MonoBehaviour:
   m_FlexibleWidth: -1
   m_FlexibleHeight: -1
   m_LayoutPriority: 1
---- !u!114 &970808924 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 1684643467798971168, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
-  m_PrefabInstance: {fileID: 8134504565733745244}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f4688fdb7df04437aeb418b961361dc5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Unity.TextMeshPro::TMPro.TextMeshProUGUI
 --- !u!1001 &980453488
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -8939,8 +8924,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CurrencyUIManager
   goldText: {fileID: 1379995496}
   gemText: {fileID: 1784306370}
-  userCreateApi: {fileID: 0}
   baseUrl: http://127.0.0.1:8000
+  battleRewardApi: {fileID: 0}
 --- !u!1001 &1111197782
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -9219,17 +9204,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1140990243}
   m_CullTransparentMesh: 1
---- !u!114 &1143457378 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 2647823707459122052, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
-  m_PrefabInstance: {fileID: 8134504565733745244}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f4688fdb7df04437aeb418b961361dc5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Unity.TextMeshPro::TMPro.TextMeshProUGUI
 --- !u!1 &1149334280
 GameObject:
   m_ObjectHideFlags: 0
@@ -11330,11 +11304,10 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1397546662}
-  - component: {fileID: 1397546661}
-  - component: {fileID: 1397546660}
   - component: {fileID: 1397546659}
   - component: {fileID: 1397546663}
   - component: {fileID: 1397546664}
+  - component: {fileID: 1397546665}
   m_Layer: 0
   m_Name: ApiManager
   m_TagString: Untagged
@@ -11354,33 +11327,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8fd93d72617857e4ea41cba903488c83, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CharacterStatusApi
-  userCreateApi: {fileID: 1397546661}
---- !u!114 &1397546660
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1397546658}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d0cad579e20f5894b8900aa052753c44, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::UserCurrencyApi
-  userCreateApi: {fileID: 1397546661}
---- !u!114 &1397546661
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1397546658}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6afd8636effe98548a76e34f2f1949ac, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::UserCreateApi
-  defaultCharacterId: 1
+  baseUrl: http://127.0.0.1:8000
+  battleRewardApi: {fileID: 0}
 --- !u!4 &1397546662
 Transform:
   m_ObjectHideFlags: 0
@@ -11410,7 +11358,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::BattleRewardApi
   baseUrl: http://127.0.0.1:8000
   rewardEndpoint: /battle/reward
-  userIdOverride: 8
+  userIdOverride: 0
 --- !u!114 &1397546664
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -11424,7 +11372,21 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CharacterUpgradeApi
   baseUrl: http://127.0.0.1:8000
-  userCreateApi: {fileID: 1397546661}
+  userIdOverride: 0
+  battleRewardApi: {fileID: 0}
+--- !u!114 &1397546665
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1397546658}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d0cad579e20f5894b8900aa052753c44, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::UserCurrencyApi
+  battleRewardApi: {fileID: 0}
 --- !u!1001 &1401673531
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -11504,7 +11466,7 @@ PrefabInstance:
     - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: hpValueText
       value: 
-      objectReference: {fileID: 1280703045}
+      objectReference: {fileID: 0}
     - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: battleManager
       value: 
@@ -11512,31 +11474,47 @@ PrefabInstance:
     - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: attackValueText
       value: 
-      objectReference: {fileID: 970808924}
+      objectReference: {fileID: 0}
     - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: hpUpgradeButton
       value: 
-      objectReference: {fileID: 863290990}
+      objectReference: {fileID: 0}
+    - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
+      propertyPath: defenseValueText
+      value: 
+      objectReference: {fileID: 1280703045}
     - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: hpUpgradeLvlText
       value: 
-      objectReference: {fileID: 338977618}
+      objectReference: {fileID: 0}
     - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: hpUpgradeCostText
       value: 
-      objectReference: {fileID: 234217826}
+      objectReference: {fileID: 0}
     - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: attackUpgradeButton
       value: 
-      objectReference: {fileID: 2006656319}
+      objectReference: {fileID: 0}
     - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: attackUpgradeLvlText
       value: 
-      objectReference: {fileID: 247765562}
+      objectReference: {fileID: 0}
+    - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
+      propertyPath: defenseUpgradeButton
+      value: 
+      objectReference: {fileID: 863290990}
     - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: attackUpgradeCostText
       value: 
-      objectReference: {fileID: 1143457378}
+      objectReference: {fileID: 0}
+    - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
+      propertyPath: defenseUpgradeLvlText
+      value: 
+      objectReference: {fileID: 338977618}
+    - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
+      propertyPath: defenseUpgradeCostText
+      value: 
+      objectReference: {fileID: 234217826}
     - target: {fileID: 7946600992105138815, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: m_Pivot.x
       value: 0.5
@@ -14158,7 +14136,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 9015267987718541141, guid: f98db2fe575dfe544806697ef497dd1a, type: 3}
       propertyPath: userId
-      value: 8
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 9015267987718541141, guid: f98db2fe575dfe544806697ef497dd1a, type: 3}
       propertyPath: stopGap
@@ -15520,11 +15498,15 @@ PrefabInstance:
     - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: attackValueText
       value: 
-      objectReference: {fileID: 970808924}
+      objectReference: {fileID: 0}
     - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: hpUpgradeButton
       value: 
       objectReference: {fileID: 289180848}
+    - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
+      propertyPath: defenseValueText
+      value: 
+      objectReference: {fileID: 0}
     - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: hpUpgradeLvlText
       value: 
@@ -15536,15 +15518,27 @@ PrefabInstance:
     - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: attackUpgradeButton
       value: 
-      objectReference: {fileID: 2006656319}
+      objectReference: {fileID: 0}
     - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: attackUpgradeLvlText
       value: 
-      objectReference: {fileID: 247765562}
+      objectReference: {fileID: 0}
+    - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
+      propertyPath: defenseUpgradeButton
+      value: 
+      objectReference: {fileID: 0}
     - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: attackUpgradeCostText
       value: 
-      objectReference: {fileID: 1143457378}
+      objectReference: {fileID: 0}
+    - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
+      propertyPath: defenseUpgradeLvlText
+      value: 
+      objectReference: {fileID: 0}
+    - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
+      propertyPath: defenseUpgradeCostText
+      value: 
+      objectReference: {fileID: 0}
     - target: {fileID: 7946600992105138815, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: m_Pivot.x
       value: 0.5
@@ -16044,17 +16038,6 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: ab8063db5051c4247942ac7256959f9b, type: 3}
---- !u!114 &2006656319 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 2126469622123975883, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
-  m_PrefabInstance: {fileID: 8134504565733745244}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4e29b1a8efbd4b44bb3f3716e73f07ff, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Button
 --- !u!1001 &2021546001
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -17657,7 +17640,7 @@ PrefabInstance:
     - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: hpValueText
       value: 
-      objectReference: {fileID: 1280703045}
+      objectReference: {fileID: 0}
     - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: battleManager
       value: 
@@ -17665,15 +17648,31 @@ PrefabInstance:
     - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: hpUpgradeButton
       value: 
-      objectReference: {fileID: 863290990}
+      objectReference: {fileID: 0}
+    - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
+      propertyPath: defenseValueText
+      value: 
+      objectReference: {fileID: 0}
     - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: hpUpgradeLvlText
       value: 
-      objectReference: {fileID: 338977618}
+      objectReference: {fileID: 0}
     - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: hpUpgradeCostText
       value: 
-      objectReference: {fileID: 234217826}
+      objectReference: {fileID: 0}
+    - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
+      propertyPath: defenseUpgradeButton
+      value: 
+      objectReference: {fileID: 0}
+    - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
+      propertyPath: defenseUpgradeLvlText
+      value: 
+      objectReference: {fileID: 0}
+    - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
+      propertyPath: defenseUpgradeCostText
+      value: 
+      objectReference: {fileID: 0}
     - target: {fileID: 7946600992105138815, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: m_Pivot.x
       value: 0.5

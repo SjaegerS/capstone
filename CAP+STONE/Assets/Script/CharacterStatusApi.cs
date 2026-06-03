@@ -5,56 +5,126 @@ using UnityEngine.Networking;
 
 public class CharacterStatusApi : MonoBehaviour
 {
-    [SerializeField] private UserCreateApi userCreateApi;
+    private const string USER_ID_KEY = "USER_ID";
+
+    [Header("API")]
+    [SerializeField] private string baseUrl = "http://127.0.0.1:8000";
+
+    [Header("References")]
+    [SerializeField] private BattleRewardApi battleRewardApi;
+
+    private void Awake()
+    {
+        if (battleRewardApi == null)
+            battleRewardApi = BattleRewardApi.Instance;
+
+        if (battleRewardApi == null)
+            battleRewardApi = FindFirstObjectByType<BattleRewardApi>();
+    }
 
     public void OnClickGetCharacterStatuses()
     {
-        if (userCreateApi == null)
+        long userId = GetUserId();
+
+        if (userId <= 0)
         {
-            Debug.LogError("UserCreateApi가 연결되지 않았습니다.");
+            Debug.LogError(
+                "[CharacterStatusApi] USER_ID가 없습니다. " +
+                "TitleScene에서 게임 시작 버튼으로 유저를 먼저 생성해야 합니다."
+            );
             return;
         }
 
-        if (userCreateApi.CurrentUserId <= 0)
+        StartCoroutine(GetCharacterStatuses(userId));
+    }
+
+    private long GetUserId()
+    {
+        // 1. BattleRewardApi 기준으로 가져오기
+        if (battleRewardApi != null)
         {
-            Debug.LogError("생성된 유저 ID가 없습니다.");
-            return;
+            int apiUserId = battleRewardApi.GetUserId();
+
+            if (apiUserId > 0)
+            {
+                CurrentUser.UserId = apiUserId;
+                return apiUserId;
+            }
         }
 
-        StartCoroutine(GetCharacterStatuses(userCreateApi.CurrentUserId));
+        // 2. CurrentUser에서 가져오기
+        if (CurrentUser.UserId > 0)
+        {
+            return CurrentUser.UserId;
+        }
+
+        // 3. PlayerPrefs USER_ID에서 가져오기
+        int savedUserId = PlayerPrefs.GetInt(USER_ID_KEY, -1);
+
+        if (savedUserId > 0)
+        {
+            CurrentUser.UserId = savedUserId;
+            return savedUserId;
+        }
+
+        return -1;
     }
 
     public IEnumerator GetCharacterStatuses(long userId)
     {
-        string url = $"{ApiConfig.BaseUrl}/users/{userId}/character-statuses/";
+        string url = $"{baseUrl}/users/{userId}/character-statuses/";
 
-        UnityWebRequest request = UnityWebRequest.Get(url);
+        Debug.Log($"[CharacterStatusApi] 캐릭터 상태 조회 API 호출: {url}");
 
-        yield return request.SendWebRequest();
-
-        if (request.result != UnityWebRequest.Result.Success)
+        using (UnityWebRequest request = UnityWebRequest.Get(url))
         {
-            Debug.LogError("캐릭터 상태 조회 실패");
-            Debug.LogError($"HTTP Code: {request.responseCode}");
-            Debug.LogError($"Error: {request.error}");
-            Debug.LogError($"Response: {request.downloadHandler.text}");
-            yield break;
-        }
+            yield return request.SendWebRequest();
 
-        string wrappedJson = "{\"characters\":" + request.downloadHandler.text + "}";
-        CharacterStatusListResponse response =
-            JsonUtility.FromJson<CharacterStatusListResponse>(wrappedJson);
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                Debug.LogError("[CharacterStatusApi] 캐릭터 상태 조회 실패");
+                Debug.LogError($"HTTP Code: {request.responseCode}");
+                Debug.LogError($"Error: {request.error}");
+                Debug.LogError($"Response: {request.downloadHandler.text}");
+                yield break;
+            }
 
-        Debug.Log($"캐릭터 상태 조회 성공. 개수={response.characters.Length}");
+            string responseText = request.downloadHandler.text;
 
-        foreach (CharacterStatusDto character in response.characters)
-        {
-            Debug.Log(
-                $"character_id={character.character_id}, " +
-                $"level={character.character_level}, " +
-                $"hp={character.current_hp}/{character.max_hp}, " +
-                $"atk={character.attack_power}, def={character.defense_power}"
-            );
+            Debug.Log($"[CharacterStatusApi] 응답: {responseText}");
+
+            string wrappedJson = "{\"characters\":" + responseText + "}";
+
+            CharacterStatusListResponse response;
+
+            try
+            {
+                response = JsonUtility.FromJson<CharacterStatusListResponse>(wrappedJson);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[CharacterStatusApi] JSON 파싱 실패: {e.Message}");
+                Debug.LogError($"Wrapped JSON: {wrappedJson}");
+                yield break;
+            }
+
+            if (response == null || response.characters == null)
+            {
+                Debug.LogError("[CharacterStatusApi] 캐릭터 상태 응답이 비어 있습니다.");
+                yield break;
+            }
+
+            Debug.Log($"[CharacterStatusApi] 캐릭터 상태 조회 성공. 개수 = {response.characters.Length}");
+
+            foreach (CharacterStatusDto character in response.characters)
+            {
+                Debug.Log(
+                    $"character_id={character.character_id}, " +
+                    $"level={character.character_level}, " +
+                    $"hp={character.current_hp}/{character.max_hp}, " +
+                    $"atk={character.attack_power}, def={character.defense_power}"
+                );
+            }
         }
     }
 
