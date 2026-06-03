@@ -150,14 +150,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 57cc94c996c048342803b2582f680c9f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CharcterUpgrade
-  upgradeButton: {fileID: 2126469622123975883}
-  costText: {fileID: 2647823707459122052}
+  characterUpgradeApi: {fileID: 0}
+  hpUpgradeButton: {fileID: 0}
+  hpValueText: {fileID: 0}
+  hpUpgradeLvlText: {fileID: 0}
+  hpUpgradeCostText: {fileID: 0}
+  attackUpgradeButton: {fileID: 2126469622123975883}
+  attackValueText: {fileID: 1684643467798971168}
+  attackUpgradeLvlText: {fileID: 4496704836182632021}
+  attackUpgradeCostText: {fileID: 2647823707459122052}
+  defenseValueText: {fileID: 0}
+  goldText: {fileID: 0}
+  messageText: {fileID: 0}
   battleManager: {fileID: 0}
-  upgradeCount: 0
-  LVText: {fileID: 4496704836182632021}
-  hpText: {fileID: 0}
-  attackText: {fileID: 0}
-  statValueText: {fileID: 1684643467798971168}
 --- !u!1 &1896202983418082034
 GameObject:
   m_ObjectHideFlags: 0
@@ -171,7 +176,7 @@ GameObject:
   - component: {fileID: 8632731842535253032}
   - component: {fileID: 3554883674672047553}
   m_Layer: 0
-  m_Name: Border_s
+  m_Name: IMG
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -479,8 +484,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: 9999
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 78687cdb3358efe40a327d7c64da406b, type: 2}
-  m_sharedMaterial: {fileID: -4132511516306205086, guid: 78687cdb3358efe40a327d7c64da406b, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 94c3512db3ffb66489a338fbae450d66, type: 2}
+  m_sharedMaterial: {fileID: 6443557610386970926, guid: 94c3512db3ffb66489a338fbae450d66, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -616,8 +621,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: 999
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 78687cdb3358efe40a327d7c64da406b, type: 2}
-  m_sharedMaterial: {fileID: -4132511516306205086, guid: 78687cdb3358efe40a327d7c64da406b, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 94c3512db3ffb66489a338fbae450d66, type: 2}
+  m_sharedMaterial: {fileID: 6443557610386970926, guid: 94c3512db3ffb66489a338fbae450d66, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -828,8 +833,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: 1000M
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 78687cdb3358efe40a327d7c64da406b, type: 2}
-  m_sharedMaterial: {fileID: -4132511516306205086, guid: 78687cdb3358efe40a327d7c64da406b, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 94c3512db3ffb66489a338fbae450d66, type: 2}
+  m_sharedMaterial: {fileID: 6443557610386970926, guid: 94c3512db3ffb66489a338fbae450d66, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -963,10 +968,10 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "\uACF5\uACA9\uB825 LV:"
+  m_text: "\uACF5\uACA9\uB825"
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 78687cdb3358efe40a327d7c64da406b, type: 2}
-  m_sharedMaterial: {fileID: -4132511516306205086, guid: 78687cdb3358efe40a327d7c64da406b, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 94c3512db3ffb66489a338fbae450d66, type: 2}
+  m_sharedMaterial: {fileID: 6443557610386970926, guid: 94c3512db3ffb66489a338fbae450d66, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -990,7 +995,7 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 44
+  m_fontSize: 50
   m_fontSizeBase: 36
   m_fontWeight: 400
   m_enableAutoSizing: 1
@@ -1046,7 +1051,7 @@ GameObject:
   - component: {fileID: 3329325035492614823}
   - component: {fileID: 2126469622123975883}
   m_Layer: 5
-  m_Name: Normal
+  m_Name: Button
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
