@@ -874,6 +874,68 @@ def upgrade_user_hp(
         "cost_gold": cost_gold,
     }
 
+@app.patch(
+    "/users/{user_id}/status/upgrade-defense/",
+    response_model=schemas.UserStatUpgradeResponse,
+)
+
+def upgrade_user_defense(
+    user_id: int,
+    db: Session = Depends(get_db),
+):
+    user_status = get_or_404(
+        db,
+        models.UserStatus,
+        models.UserStatus.user_id == user_id,
+        "유저 상태 정보를 찾을 수 없습니다.",
+    )
+
+    currency = get_or_404(
+        db,
+        models.UserCurrency,
+        models.UserCurrency.user_id == user_id,
+        "재화 정보를 찾을 수 없습니다.",
+    )
+
+    cost_gold = calculate_user_stat_upgrade_cost(user_status.defense_upgrade_lvl)
+
+    if currency.gold < cost_gold:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"골드가 부족합니다. 필요 골드: {cost_gold}, 보유 골드: {currency.gold}",
+        )
+
+    increase_defense = calculate_defense_upgrade_amount(user_status.defense_upgrade_lvl)
+
+    currency.gold -= cost_gold
+    user_status.defense_power += increase_defense
+    user_status.defense_upgrade_lvl += 1
+
+    user_status.updated_at = datetime.now()
+    currency.updated_at = datetime.now()
+
+    db.commit()
+    db.refresh(user_status)
+    db.refresh(currency)
+
+    return {
+        "user_id": user_id,
+        "upgrade_type": "DEFENSE",
+
+        "max_hp": user_status.max_hp,
+        "attack_power": user_status.attack_power,
+        "defense_power": user_status.defense_power,
+
+        "hp_upgrade_lvl": user_status.hp_upgrade_lvl,
+        "attack_upgrade_lvl": user_status.attack_upgrade_lvl,
+        "defense_upgrade_lvl": user_status.defense_upgrade_lvl,
+
+        "upgrade_lvl": user_status.defense_upgrade_lvl,
+
+        "gold": currency.gold,
+        "cost_gold": cost_gold,
+    }
+
 
 
 
