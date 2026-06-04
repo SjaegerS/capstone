@@ -2159,7 +2159,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4792066031241764937, guid: ad1309697828d40cf94a71770f850d73, type: 3}
       propertyPath: m_fontSize
-      value: 37.45
+      value: 37.55
       objectReference: {fileID: 0}
     - target: {fileID: 4792066031241764937, guid: ad1309697828d40cf94a71770f850d73, type: 3}
       propertyPath: m_fontSizeMax
@@ -2252,8 +2252,16 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 2248656622818453560, guid: ad1309697828d40cf94a71770f850d73, type: 3}
       insertIndex: -1
       addedObject: {fileID: 199293263}
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 1554165825012590661, guid: ad1309697828d40cf94a71770f850d73, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2248656622780249485}
   m_SourcePrefab: {fileID: 100100000, guid: ad1309697828d40cf94a71770f850d73, type: 3}
+--- !u!1 &239672757 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 1554165825012590661, guid: ad1309697828d40cf94a71770f850d73, type: 3}
+  m_PrefabInstance: {fileID: 239672756}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &265717483
 GameObject:
   m_ObjectHideFlags: 0
@@ -2889,7 +2897,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.75333303, y: 0.5}
   m_AnchorMax: {x: 1, y: 0.6506251}
-  m_AnchoredPosition: {x: 3.9999695, y: -21.299988}
+  m_AnchoredPosition: {x: 4, y: -21.299988}
   m_SizeDelta: {x: -122, y: -141}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &317049632
@@ -3123,7 +3131,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4792066031241764937, guid: ad1309697828d40cf94a71770f850d73, type: 3}
       propertyPath: m_fontSize
-      value: 37.45
+      value: 37.55
       objectReference: {fileID: 0}
     - target: {fileID: 4792066031241764937, guid: ad1309697828d40cf94a71770f850d73, type: 3}
       propertyPath: m_fontSizeMax
@@ -8922,7 +8930,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bc00f0a39755ffa418cd24c36b4a6012, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CurrencyUIManager
-  goldText: {fileID: 1379995496}
+  goldText: {fileID: 0}
   gemText: {fileID: 1784306370}
   baseUrl: http://127.0.0.1:8000
   battleRewardApi: {fileID: 0}
@@ -9114,7 +9122,7 @@ MonoBehaviour:
   m_MinValue: 0
   m_MaxValue: 1
   m_WholeNumbers: 0
-  m_Value: 0.694
+  m_Value: 0.412
   m_OnValueChanged:
     m_PersistentCalls:
       m_Calls: []
@@ -11308,6 +11316,7 @@ GameObject:
   - component: {fileID: 1397546663}
   - component: {fileID: 1397546664}
   - component: {fileID: 1397546665}
+  - component: {fileID: 1397546666}
   m_Layer: 0
   m_Name: ApiManager
   m_TagString: Untagged
@@ -11387,6 +11396,20 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::UserCurrencyApi
   battleRewardApi: {fileID: 0}
+--- !u!114 &1397546666
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1397546658}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 30234e26bbb358145a5fc690a65becfd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerLevelController
+  characterStatusApi: {fileID: 0}
+  playerLevelUI: {fileID: 0}
 --- !u!1001 &1401673531
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -11398,6 +11421,10 @@ PrefabInstance:
     - target: {fileID: 1204106902250582327, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: m_Name
       value: Upgrade_Charcter_DEF
+      objectReference: {fileID: 0}
+    - target: {fileID: 1684643467798971168, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
+      propertyPath: m_fontSize
+      value: 70
       objectReference: {fileID: 0}
     - target: {fileID: 1684643467798971168, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: m_fontAsset
@@ -11426,6 +11453,10 @@ PrefabInstance:
     - target: {fileID: 2647823707459122052, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: m_hasFontAssetChanged
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4496704836182632021, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
+      propertyPath: m_fontSize
+      value: 50
       objectReference: {fileID: 0}
     - target: {fileID: 4496704836182632021, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: m_fontAsset
@@ -12935,13 +12966,14 @@ GameObject:
   - component: {fileID: 1594126292}
   - component: {fileID: 1594126294}
   - component: {fileID: 1594126293}
+  - component: {fileID: 1594126295}
   m_Layer: 5
   m_Name: LevelPanel
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &1594126292
 RectTransform:
   m_ObjectHideFlags: 0
@@ -12999,6 +13031,23 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1594126291}
   m_CullTransparentMesh: 1
+--- !u!114 &1594126295
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1594126291}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: daaa6fc1f9d4b5949adc6f33c6a23eaa, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerLevelUI
+  levelText: {fileID: 757122561}
+  expSlider: {fileID: 1138696405}
+  expText: {fileID: 0}
+  baseRequiredExp: 1000
+  expIncreaseRate: 1.16
 --- !u!1 &1602548250 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 7660549652700934778, guid: 720e692ab8c79486e886130e61bc80f7, type: 3}
@@ -15424,6 +15473,10 @@ PrefabInstance:
       value: Upgrade_Charcter_HP
       objectReference: {fileID: 0}
     - target: {fileID: 1684643467798971168, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
+      propertyPath: m_fontSize
+      value: 70
+      objectReference: {fileID: 0}
+    - target: {fileID: 1684643467798971168, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: m_fontAsset
       value: 
       objectReference: {fileID: 11400000, guid: 94c3512db3ffb66489a338fbae450d66, type: 2}
@@ -15450,6 +15503,10 @@ PrefabInstance:
     - target: {fileID: 2647823707459122052, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: m_hasFontAssetChanged
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4496704836182632021, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
+      propertyPath: m_fontSize
+      value: 50
       objectReference: {fileID: 0}
     - target: {fileID: 4496704836182632021, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: m_fontAsset
@@ -15892,7 +15949,7 @@ MonoBehaviour:
   m_PreserveAspect: 0
   m_FillCenter: 1
   m_FillMethod: 1
-  m_FillAmount: 0.694
+  m_FillAmount: 0.412
   m_FillClockwise: 1
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
@@ -16873,6 +16930,22 @@ RectTransform:
   m_CorrespondingSourceObject: {fileID: 2248656622818453560, guid: ad1309697828d40cf94a71770f850d73, type: 3}
   m_PrefabInstance: {fileID: 239672756}
   m_PrefabAsset: {fileID: 0}
+--- !u!114 &2248656622780249485
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 239672757}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bc00f0a39755ffa418cd24c36b4a6012, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CurrencyUIManager
+  goldText: {fileID: 1379995496}
+  gemText: {fileID: 0}
+  baseUrl: http://127.0.0.1:8000
+  battleRewardApi: {fileID: 0}
 --- !u!224 &2385466860829067708 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 8852232451854778113, guid: ab8063db5051c4247942ac7256959f9b, type: 3}
@@ -17636,6 +17709,18 @@ PrefabInstance:
     - target: {fileID: 1204106902250582327, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: m_Name
       value: Upgrade_Charcter_ATK
+      objectReference: {fileID: 0}
+    - target: {fileID: 1684643467798971168, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
+      propertyPath: m_fontSize
+      value: 70
+      objectReference: {fileID: 0}
+    - target: {fileID: 4496704836182632021, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
+      propertyPath: m_fontSize
+      value: 50
+      objectReference: {fileID: 0}
+    - target: {fileID: 4972797680693800541, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
+      propertyPath: m_fontSize
+      value: 50
       objectReference: {fileID: 0}
     - target: {fileID: 7507541461892842203, guid: 1fef1e2843eb13a4ab122171ecf3ced7, type: 3}
       propertyPath: hpValueText

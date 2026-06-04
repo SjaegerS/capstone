@@ -60,11 +60,25 @@ public class BattleRewardApi : MonoBehaviour
         public string message;
 
         public int user_id;
+        public int cleared_stage;
         public int current_stage;
 
+        public int reward_gold;
+        public int reward_exp;
+
         public int gold;
+        public int gem;
+
         public int exp;
         public int level;
+        public int required_exp;
+        public int level_up_count;
+
+        public int total_boss_kill_count;
+
+        public int max_hp;
+        public int attack_power;
+        public int defense_power;
     }
 
     [Serializable]

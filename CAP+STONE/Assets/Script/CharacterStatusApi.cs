@@ -128,6 +128,72 @@ public class CharacterStatusApi : MonoBehaviour
         }
     }
 
+    // =========================================================
+    // 추가: 유저 상태 조회
+    // level, exp, gem, gold 같은 플레이어 계정 상태용
+    // =========================================================
+
+    public void LoadUserStatus(Action<bool, UserStatusDto> onComplete)
+    {
+        long userId = GetUserId();
+
+        if (userId <= 0)
+        {
+            Debug.LogError(
+                "[CharacterStatusApi] USER_ID가 없습니다. " +
+                "유저 상태를 조회할 수 없습니다."
+            );
+
+            onComplete?.Invoke(false, null);
+            return;
+        }
+
+        StartCoroutine(GetUserStatus(userId, onComplete));
+    }
+
+    private IEnumerator GetUserStatus(long userId, System.Action<bool, UserStatusDto> onComplete)
+{
+    string url = $"{baseUrl}/users/{userId}/status";
+
+    Debug.Log($"[CharacterStatusApi] 유저 상태 조회 API 호출: {url}");
+
+    using (UnityWebRequest request = UnityWebRequest.Get(url))
+    {
+        yield return request.SendWebRequest();
+
+        if (request.result != UnityWebRequest.Result.Success)
+        {
+            Debug.LogError("[CharacterStatusApi] 유저 상태 조회 실패");
+            Debug.LogError($"HTTP Code: {request.responseCode}");
+            Debug.LogError($"Error: {request.error}");
+            Debug.LogError($"Response: {request.downloadHandler.text}");
+
+            onComplete?.Invoke(false, null);
+            yield break;
+        }
+
+        string responseText = request.downloadHandler.text;
+        Debug.Log($"[CharacterStatusApi] 유저 상태 응답: {responseText}");
+
+        UserStatusDto response;
+
+        try
+        {
+            response = JsonUtility.FromJson<UserStatusDto>(responseText);
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"[CharacterStatusApi] JSON 파싱 실패: {e.Message}");
+            Debug.LogError($"Response: {responseText}");
+
+            onComplete?.Invoke(false, null);
+            yield break;
+        }
+
+        onComplete?.Invoke(true, response);
+    }
+}
+
     [Serializable]
     public class CharacterStatusListResponse
     {
@@ -144,5 +210,15 @@ public class CharacterStatusApi : MonoBehaviour
         public int current_hp;
         public int attack_power;
         public int defense_power;
+    }
+
+    [Serializable]
+    public class UserStatusDto
+    {
+        public long user_id;
+        public int level;
+        public int exp;
+        public int required_exp;
+        public int gem;
     }
 }

@@ -30,7 +30,7 @@ public class BattleManager : MonoBehaviour
 
     [Header("Coin System")]
     public CoinSpawner coinSpawner;
-
+    
     [Header("API")]
     public BattleRewardApi battleRewardApi;
 
@@ -42,6 +42,7 @@ public class BattleManager : MonoBehaviour
 
     [Header("UI")]
     public TextMeshProUGUI stageText;
+    public PlayerLevelUI playerLevelUI;
 
     private UnitController currentPlayer;
     private UnitController currentEnemy;
@@ -71,6 +72,9 @@ public class BattleManager : MonoBehaviour
     {
         if (battleRewardApi == null)
             battleRewardApi = FindFirstObjectByType<BattleRewardApi>();
+
+        if (playerLevelUI == null)
+        playerLevelUI = FindFirstObjectByType<PlayerLevelUI>(FindObjectsInactive.Include);    
     }
 
     private void ResolveUserId()
@@ -515,35 +519,49 @@ public class BattleManager : MonoBehaviour
 
                 if (battleRewardApi != null && userId > 0)
                 {
-                    yield return StartCoroutine(
-                        battleRewardApi.SaveBattleReward(
-                            userId,
-                            clearedStage,
-                            rewardGold,
-                            rewardExp,
-                            response =>
+                    yield return StartCoroutine(battleRewardApi.SaveBattleReward(
+                        userId,
+                        currentStage,
+                        rewardGold,
+                        rewardExp,
+                        response =>
+                        {
+                            if (response == null)
                             {
-                                dbSaveSuccess = true;
+                                Debug.LogError("[BattleManager] BattleRewardResponse가 null입니다.");
+                                return;
+                            }
 
-                                if (response != null)
-                                {
-                                    nextStage = Mathf.Max(nextStage, response.current_stage);
+                            nextStage = Mathf.Max(nextStage, response.current_stage);
 
-                                    GoldManager.Instance?.SetGold(response.gold);
-                                    CurrencyUIManager.Instance?.SetGold(response.gold);
-                                }
-                            },
-                            error =>
+                            // 골드 즉시 갱신
+                            GoldManager.Instance?.SetGold(response.gold);
+                            CurrencyUIManager.Instance?.SetGold(response.gold);
+
+                            // 젬 즉시 갱신
+                            CurrencyUIManager.Instance?.SetGem(response.gem);
+
+                            // 레벨 / 경험치 바 즉시 갱신
+                            if (playerLevelUI != null)
                             {
-                                dbSaveSuccess = false;
-                                Debug.LogError(
-                                    $"[BattleManager] 전투 보상 DB 저장 실패\n" +
-                                    $"user_id: {userId}\n" +
-                                    $"error: {error}"
+                                playerLevelUI.SetStatus(
+                                    response.level,
+                                    response.exp,
+                                    response.gem
                                 );
                             }
-                        )
-                    );
+
+                            Debug.Log(
+                                $"[BattleManager] 보상 UI 즉시 갱신 완료 | " +
+                                $"Lv.{response.level}, EXP {response.exp}/{response.required_exp}, " +
+                                $"Gold {response.gold}, Gem {response.gem}, LevelUp {response.level_up_count}"
+                            );
+                        },
+                        error =>
+                        {
+                            Debug.LogError($"[BattleManager] 보상 저장 실패: {error}");
+                        }
+                    ));
                 }
                 else
                 {
