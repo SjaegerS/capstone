@@ -7,8 +7,10 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import relationship
@@ -22,8 +24,12 @@ class CharacterInfo(Base):
     character_id = Column(BigInteger, primary_key=True, autoincrement=True)
     character_key = Column(String(100), nullable=False, unique=True)
     character_name = Column(String(50), nullable=False)
-    description = Column(Text, nullable=True)
-    main_effect = Column(Text, nullable=True)
+
+    character_statuses = relationship(
+        "CharacterStatus",
+        back_populates="character",
+        cascade="all, delete-orphan",
+    )
 
 
 class User(Base):
@@ -56,8 +62,8 @@ class User(Base):
         cascade="all, delete-orphan",
     )
 
-    character_conditions = relationship(
-        "CharacterCondition",
+    user_buffs = relationship(
+        "UserBuff",
         back_populates="user",
         cascade="all, delete-orphan",
     )
@@ -110,30 +116,30 @@ class UserStatus(Base):
 
     player_level = Column(Integer, default=1)
     player_exp = Column(Integer, default=0)
-    required_exp = Column(Integer, default=100)
+    required_exp = Column(Integer, default=1000)
+
+    hp_upgrade_lvl = Column(Integer, nullable=False, default=0)
+    attack_upgrade_lvl = Column(Integer, nullable=False, default=0)
+    defense_upgrade_lvl = Column(Integer, nullable=False, default=0)
+
+    max_hp = Column(Integer, nullable=False, default=100)
+    attack_power = Column(Integer, nullable=False, default=10)
+    defense_power = Column(Integer, nullable=False, default=5)
 
     current_stage = Column(Integer, default=1)
     total_boss_kill_count = Column(Integer, default=0)
-
-    max_hp = Column(Integer, default=100)
-    attack_power = Column(Integer, default=10)
-    defense_power = Column(Integer, default=5)
-
-    hp_upgrade_lvl = Column(Integer, default=1)
-    attack_upgrade_lvl = Column(Integer, default=1)
-    defense_upgrade_lvl = Column(Integer, default=1)
-
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         CheckConstraint(
-            "max_hp >= 1 AND attack_power >= 0 AND defense_power >= 0",
+            "max_hp > 0 AND attack_power >= 0 AND defense_power >= 0",
             name="chk_user_status_stats",
         ),
     )
 
     user = relationship("User", back_populates="status")
     current_character = relationship("CharacterInfo")
+
 
 class CharacterStatus(Base):
     __tablename__ = "character_status"
@@ -150,14 +156,43 @@ class CharacterStatus(Base):
         primary_key=True,
     )
 
-    character_level = Column(Integer, default=1)
-
     user = relationship("User", back_populates="character_statuses")
-    character = relationship("CharacterInfo")
+    character = relationship("CharacterInfo", back_populates="character_statuses")
 
 
-class CharacterCondition(Base):
-    __tablename__ = "character_condition"
+class BuffInfo(Base):
+    __tablename__ = "buff_info"
+
+    buff_id = Column(BigInteger, primary_key=True, autoincrement=True)
+
+    buff_type = Column(String(30), nullable=False)
+    condition_grade = Column(String(20), nullable=False)
+    buff_name = Column(String(100), nullable=False)
+
+    effect_value = Column(Numeric(10, 2), nullable=False, default=0)
+    is_decaying = Column(Boolean, nullable=False, default=True)
+    decay_value = Column(Numeric(10, 2), nullable=False, default=0)
+
+    __table_args__ = (
+        UniqueConstraint("buff_type", "condition_grade", name="uq_buff_type_grade"),
+        CheckConstraint(
+            "buff_type IN ('ACTIVITY', 'RESTRAINT', 'QUEST', 'OFFLINE')",
+            name="chk_buff_type",
+        ),
+        CheckConstraint(
+            "condition_grade IN ('NORMAL', 'GOOD', 'BEST')",
+            name="chk_condition_grade",
+        ),
+        CheckConstraint("effect_value >= 0", name="chk_effect_value"),
+        CheckConstraint("is_decaying IN (0, 1)", name="chk_is_decaying"),
+        CheckConstraint("decay_value >= 0", name="chk_decay_value"),
+    )
+
+    user_buffs = relationship("UserBuff", back_populates="buff_info")
+
+
+class UserBuff(Base):
+    __tablename__ = "user_buff"
 
     user_id = Column(
         BigInteger,
@@ -165,25 +200,43 @@ class CharacterCondition(Base):
         primary_key=True,
     )
 
-    character_id = Column(
+    buff_date = Column(Date, primary_key=True)
+    buff_type = Column(String(30), primary_key=True)
+
+    buff_id = Column(
         BigInteger,
-        ForeignKey("character_info.character_id", ondelete="CASCADE"),
-        primary_key=True,
+        ForeignKey("buff_info.buff_id", ondelete="CASCADE"),
+        nullable=False,
     )
 
-    condition_score = Column(Integer, default=3)
-    condition_grade = Column(String(20), default="NORMAL")
-    last_updated_date = Column(Date, nullable=False)
+    condition_score = Column(Integer, nullable=False)
+    current_effect_value = Column(Numeric(10, 2), nullable=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    applied_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
         CheckConstraint(
-            "condition_score BETWEEN 1 AND 3",
+            "buff_type IN ('ACTIVITY', 'RESTRAINT', 'QUEST', 'OFFLINE')",
+            name="chk_user_buff_type",
+        ),
+        CheckConstraint(
+            "condition_score BETWEEN 0 AND 100",
             name="chk_condition_score",
+        ),
+        CheckConstraint(
+            "current_effect_value >= 0",
+            name="chk_current_effect_value",
+        ),
+        CheckConstraint(
+            "is_active IN (0, 1)",
+            name="chk_user_buff_active",
         ),
     )
 
-    user = relationship("User", back_populates="character_conditions")
-    character = relationship("CharacterInfo")
+    user = relationship("User", back_populates="user_buffs")
+    buff_info = relationship("BuffInfo", back_populates="user_buffs")
 
 
 class Item(Base):
@@ -219,15 +272,19 @@ class UserItem(Base):
         nullable=False,
     )
 
+    enhance_level = Column(Integer, nullable=False, default=1)
+    is_equipped = Column(Boolean, nullable=False, default=False)
     quantity = Column(Integer, nullable=False, default=1)
 
-    enhance_level = Column(Integer, default=0)
-    is_equipped = Column(Boolean, default=False)
-
     __table_args__ = (
+        UniqueConstraint("user_id", "item_id", name="uq_user_item"),
         CheckConstraint(
-            "enhance_level BETWEEN 0 AND 5",
-            name="chk_enhance_level",
+            "enhance_level >= 1",
+            name="chk_user_item_enhance_level_positive",
+        ),
+        CheckConstraint(
+            "quantity >= 0",
+            name="chk_user_item_quantity_nonnegative",
         ),
     )
 
@@ -328,7 +385,7 @@ class OfflineRewardBox(Base):
     accumulated_min = Column(Integer, default=0)
     boss_kill_count = Column(Integer, default=0)
     reward_gold = Column(Integer, default=0)
-    reward_exp = Column(Integer, default=0)
+    reward_gem = Column(Integer, default=0)
     is_claimed = Column(Boolean, default=False)
     created_at = Column(DateTime, server_default=func.now())
     claimed_at = Column(DateTime, nullable=True)

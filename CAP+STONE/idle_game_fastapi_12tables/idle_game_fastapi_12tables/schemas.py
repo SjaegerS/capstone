@@ -7,23 +7,17 @@ from pydantic import BaseModel, EmailStr, Field
 class CharacterInfoCreate(BaseModel):
     character_key: str
     character_name: str
-    description: Optional[str] = None
-    main_effect: Optional[str] = None
 
 
 class CharacterInfoUpdate(BaseModel):
     character_key: Optional[str] = None
     character_name: Optional[str] = None
-    description: Optional[str] = None
-    main_effect: Optional[str] = None
 
 
 class CharacterInfoResponse(BaseModel):
     character_id: int
     character_key: str
     character_name: str
-    description: Optional[str] = None
-    main_effect: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -46,26 +40,36 @@ class UserUpdate(BaseModel):
 class UserStatusResponse(BaseModel):
     user_id: int
     current_character_id: int
+
     player_level: int
     player_exp: int
     required_exp: int
-    current_stage: int
-    total_boss_kill_count: int
-
-    max_hp: int
-    attack_power: int
-    defense_power: int
 
     hp_upgrade_lvl: int
     attack_upgrade_lvl: int
     defense_upgrade_lvl: int
 
+    max_hp: int
+    attack_power: int
+    defense_power: int
 
+    current_stage: int
+    total_boss_kill_count: int
     updated_at: datetime
+
     current_character: Optional[CharacterInfoResponse] = None
 
     class Config:
         from_attributes = True
+
+
+class UserLevelStatusResponse(BaseModel):
+    user_id: int
+    level: int
+    exp: int
+    required_exp: int
+    gem: int
+
 
 class UserStatUpgradeResponse(BaseModel):
     user_id: int
@@ -79,11 +83,14 @@ class UserStatUpgradeResponse(BaseModel):
     attack_upgrade_lvl: int
     defense_upgrade_lvl: int
 
+    upgrade_lvl: Optional[int] = None
+
     gold: int
     cost_gold: int
 
     class Config:
         from_attributes = True
+
 
 class UserResponse(BaseModel):
     user_id: int
@@ -100,7 +107,6 @@ class UserResponse(BaseModel):
 class CharacterStatusResponse(BaseModel):
     user_id: int
     character_id: int
-    character_level: int
     character: Optional[CharacterInfoResponse] = None
 
     class Config:
@@ -108,25 +114,71 @@ class CharacterStatusResponse(BaseModel):
 
 
 class CharacterStatusUpdate(BaseModel):
-    character_level: Optional[int] = None
+    pass
 
 
-class CharacterConditionResponse(BaseModel):
-    user_id: int
-    character_id: int
-    condition_score: int
+class BuffInfoCreate(BaseModel):
+    buff_type: str
     condition_grade: str
-    last_updated_date: date
-    character: Optional[CharacterInfoResponse] = None
+    buff_name: str
+    effect_value: float = 0
+    is_decaying: bool = True
+    decay_value: float = 0
+
+
+class BuffInfoUpdate(BaseModel):
+    buff_type: Optional[str] = None
+    condition_grade: Optional[str] = None
+    buff_name: Optional[str] = None
+    effect_value: Optional[float] = None
+    is_decaying: Optional[bool] = None
+    decay_value: Optional[float] = None
+
+
+class BuffInfoResponse(BaseModel):
+    buff_id: int
+    buff_type: str
+    condition_grade: str
+    buff_name: str
+    effect_value: float
+    is_decaying: bool
+    decay_value: float
 
     class Config:
         from_attributes = True
 
 
-class CharacterConditionUpdate(BaseModel):
-    condition_score: Optional[int] = Field(default=None, ge=1, le=3)
-    condition_grade: Optional[str] = None
-    last_updated_date: Optional[date] = None
+class UserBuffCreate(BaseModel):
+    user_id: int
+    buff_id: int
+    buff_type: str
+    condition_score: int = Field(ge=0, le=100)
+    current_effect_value: float = Field(ge=0)
+    buff_date: date
+    is_active: bool = True
+
+
+class UserBuffUpdate(BaseModel):
+    buff_id: Optional[int] = None
+    condition_score: Optional[int] = Field(default=None, ge=0, le=100)
+    current_effect_value: Optional[float] = Field(default=None, ge=0)
+    is_active: Optional[bool] = None
+
+
+class UserBuffResponse(BaseModel):
+    user_id: int
+    buff_id: int
+    buff_type: str
+    condition_score: int
+    current_effect_value: float
+    buff_date: date
+    is_active: bool
+    applied_at: datetime
+    updated_at: datetime
+    buff_info: Optional[BuffInfoResponse] = None
+
+    class Config:
+        from_attributes = True
 
 
 class ItemCreate(BaseModel):
@@ -166,14 +218,15 @@ class ItemResponse(BaseModel):
 class UserItemCreate(BaseModel):
     user_id: int
     item_id: int
-    quantity: int = 1
-    enhance_level: int = 0
+    quantity: int = Field(default=1, ge=0)
+    enhance_level: int = Field(default=1, ge=1)
     is_equipped: bool = False
 
 
 class UserItemUpdate(BaseModel):
-    enhance_level: Optional[int] = Field(default=None, ge=0, le=5)
+    enhance_level: Optional[int] = Field(default=None, ge=1)
     is_equipped: Optional[bool] = None
+    quantity: Optional[int] = Field(default=None, ge=0)
 
 
 class UserItemResponse(BaseModel):
@@ -198,20 +251,23 @@ class UserCurrencyResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 class SpendCurrencyRequest(BaseModel):
-    amount: int
+    amount: int = Field(gt=0)
+
 
 class UserCurrencyUpdate(BaseModel):
-    gold: Optional[int] = None
-    gem: Optional[int] = None
+    gold: Optional[int] = Field(default=None, ge=0)
+    gem: Optional[int] = Field(default=None, ge=0)
 
 
 class BattleRewardRequest(BaseModel):
     user_id: int
     stage_id: int
-    reward_gold: int
-    reward_exp: int
+    reward_gold: int = 0
+    reward_exp: int = 0
     kill_count_add: int = 1
+
 
 class PhoneUsageLogCreate(BaseModel):
     user_id: int
@@ -302,7 +358,7 @@ class OfflineRewardBoxResponse(BaseModel):
     accumulated_min: int
     boss_kill_count: int
     reward_gold: int
-    reward_exp: int
+    reward_gem: int
     is_claimed: bool
     created_at: datetime
     claimed_at: Optional[datetime] = None

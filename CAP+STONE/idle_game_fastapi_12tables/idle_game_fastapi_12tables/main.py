@@ -1,23 +1,29 @@
 import json
 import os
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from typing import List
 
-from pydantic import BaseModel
 from fastapi import Depends, FastAPI, HTTPException, status
-from routes import battle
 from google import genai
-from sqlalchemy import func
+from pydantic import BaseModel
+from sqlalchemy import func, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
-from datetime import datetime
+
+from routes import battle
 
 import models
 import schemas
 from database import get_db
 
+
 app = FastAPI(title="Idle Game API")
 app.include_router(battle.router)
+
+
+# ======================================================
+# Common Utils
+# ======================================================
 
 def get_or_404(db: Session, model, condition, detail: str):
     obj = db.query(model).filter(condition).first()
@@ -33,11 +39,25 @@ def apply_update(db_obj, update_data):
 
 
 def condition_grade_to_score(grade: str) -> int:
+    """
+    user_buff.condition_score는 0~100 기준.
+    NORMAL / GOOD / BEST를 대표 점수로 변환.
+    """
     if grade == "BEST":
-        return 3
+        return 100
     if grade == "GOOD":
-        return 2
-    return 1
+        return 70
+    return 30
+
+
+def calculate_required_exp(level: int) -> int:
+    """
+    플레이어 레벨업 필요 경험치:
+    1레벨 기준 1000,
+    레벨당 16% 증가.
+    """
+    level = max(1, level)
+    return int(1000 * (1.16 ** (level - 1)))
 
 
 def calculate_enhance_gold(enhance_level: int) -> int:
@@ -55,6 +75,7 @@ def calculate_equipment_attack(base_attack: int, enhance_level: int) -> int:
 def calculate_equipment_defense(base_defense: int, enhance_level: int) -> int:
     return base_defense + int(base_defense * 0.1 * enhance_level)
 
+
 PLAYER_BASE_HP = 100
 PLAYER_BASE_ATTACK = 20
 PLAYER_BASE_DEFENSE = 20
@@ -65,27 +86,14 @@ STAT_UPGRADE_COST_RATE = 1.17
 STAT_UPGRADE_AMOUNT_BASE = 1
 STAT_UPGRADE_AMOUNT_RATE = 1.13
 
-def calculate_user_stat_upgrade_cost(upgrade_lvl: int) -> int:
-    """
-    스탯 강화 필요 골드:
-    기본 1000 × 1.17^n
 
-    현재 DB 구조상 upgrade_lvl 기본값이 1이므로
-    Lv.1 -> Lv.2 강화 비용 = 1000 × 1.17^0
-    """
+def calculate_user_stat_upgrade_cost(upgrade_lvl: int) -> int:
     upgrade_lvl = max(1, upgrade_lvl)
     n = upgrade_lvl - 1
     return int(STAT_UPGRADE_COST_BASE * (STAT_UPGRADE_COST_RATE ** n))
 
 
 def calculate_stat_upgrade_amount(upgrade_lvl: int) -> int:
-    """
-    스탯 강화 증가량:
-    1 × 1.13^n
-
-    정수 스탯이므로 최소 1 보장.
-    Lv.1 -> Lv.2 증가량 = 1
-    """
     upgrade_lvl = max(1, upgrade_lvl)
     n = upgrade_lvl - 1
     return max(1, int(STAT_UPGRADE_AMOUNT_BASE * (STAT_UPGRADE_AMOUNT_RATE ** n)))
@@ -225,10 +233,83 @@ def call_gemini_for_feedback(
     }
 
 
+def create_user_daily_buffs(db: Session, user_id: int, condition_result: str = "BEST"):
+    """
+    user_buff는 유저별/날짜별/버프타입별 상태 테이블.
+    초기 유저 생성 시 오늘 날짜 기준 4종 버프를 생성한다.
+
+    buff_info는 ACTIVITY / RESTRAINT / QUEST / OFFLINE
+    각 타입별 NORMAL / GOOD / BEST 데이터를 갖고 있어야 한다.
+    """
+    condition_score = condition_grade_to_score(condition_result)
+
+    buff_count = db.execute(
+        text(
+            """
+            SELECT COUNT(*)
+            FROM buff_info
+            WHERE condition_grade = :condition_grade
+            """
+        ),
+        {"condition_grade": condition_result},
+    ).scalar()
+
+    if buff_count != 4:
+        raise HTTPException(
+            status_code=400,
+            detail=f"buff_info에 {condition_result} 등급 버프가 4개 필요합니다. 현재 개수: {buff_count}",
+        )
+
+    db.execute(
+        text(
+            """
+            INSERT INTO user_buff (
+                user_id,
+                buff_id,
+                buff_type,
+                condition_score,
+                current_effect_value,
+                buff_date,
+                is_active
+            )
+            SELECT
+                :user_id,
+                bi.buff_id,
+                bi.buff_type,
+                :condition_score,
+                bi.effect_value,
+                CURRENT_DATE,
+                1
+            FROM buff_info bi
+            WHERE bi.condition_grade = :condition_grade
+            ON DUPLICATE KEY UPDATE
+                buff_id = VALUES(buff_id),
+                condition_score = VALUES(condition_score),
+                current_effect_value = VALUES(current_effect_value),
+                is_active = VALUES(is_active),
+                updated_at = CURRENT_TIMESTAMP
+            """
+        ),
+        {
+            "user_id": user_id,
+            "condition_score": condition_score,
+            "condition_grade": condition_result,
+        },
+    )
+
+
+# ======================================================
+# Health
+# ======================================================
+
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
 
+
+# ======================================================
+# Character Info
+# ======================================================
 
 @app.post(
     "/characters/",
@@ -293,6 +374,10 @@ def update_character(
         )
 
 
+# ======================================================
+# Users
+# ======================================================
+
 @app.post(
     "/users/",
     response_model=schemas.UserResponse,
@@ -332,7 +417,7 @@ def create_user(user_data: schemas.UserCreate, db: Session = Depends(get_db)):
 
                 player_level=1,
                 player_exp=0,
-                required_exp=100,
+                required_exp=1000,
 
                 current_stage=1,
                 total_boss_kill_count=0,
@@ -351,35 +436,39 @@ def create_user(user_data: schemas.UserCreate, db: Session = Depends(get_db)):
             models.UserCurrency(
                 user_id=user.user_id,
                 gold=0,
-                gem=9999999999,
+                gem=0,
             )
         )
 
         characters = db.query(models.CharacterInfo).all()
-        today = date.today()
+
+        if len(characters) == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="character_info에 등록된 캐릭터가 없습니다.",
+            )
 
         for character in characters:
             db.add(
                 models.CharacterStatus(
                     user_id=user.user_id,
                     character_id=character.character_id,
-                    character_level=1,
                 )
             )
 
-            db.add(
-                models.CharacterCondition(
-                    user_id=user.user_id,
-                    character_id=character.character_id,
-                    condition_score=3,
-                    condition_grade="NORMAL",
-                    last_updated_date=today,
-                )
-            )
+        create_user_daily_buffs(
+            db=db,
+            user_id=user.user_id,
+            condition_result="BEST",
+        )
 
         db.commit()
         db.refresh(user)
         return user
+
+    except HTTPException:
+        db.rollback()
+        raise
 
     except IntegrityError:
         db.rollback()
@@ -434,6 +523,35 @@ def update_user(
         raise HTTPException(status_code=409, detail="이미 사용 중인 이메일입니다.")
 
 
+@app.get("/users/{user_id}/status")
+def get_user_status(user_id: int, db: Session = Depends(get_db)):
+    status_row = db.execute(
+        text(
+            """
+            SELECT
+                us.user_id,
+                us.player_level AS level,
+                us.player_exp AS exp,
+                us.required_exp,
+                COALESCE(uc.gem, 0) AS gem
+            FROM user_status us
+            LEFT JOIN user_currency uc
+                ON us.user_id = uc.user_id
+            WHERE us.user_id = :user_id
+            """
+        ),
+        {"user_id": user_id},
+    ).mappings().first()
+
+    if status_row is None:
+        raise HTTPException(
+            status_code=404,
+            detail="User status not found",
+        )
+
+    return dict(status_row)
+
+
 @app.patch(
     "/users/{user_id}/current-character/{character_id}",
     response_model=schemas.UserStatusResponse,
@@ -472,6 +590,10 @@ def change_current_character(
     return user_status
 
 
+# ======================================================
+# Character Status
+# ======================================================
+
 @app.get(
     "/users/{user_id}/character-statuses/",
     response_model=List[schemas.CharacterStatusResponse],
@@ -509,46 +631,9 @@ def update_character_status(
     return character_status
 
 
-@app.get(
-    "/users/{user_id}/character-conditions/",
-    response_model=List[schemas.CharacterConditionResponse],
-)
-def get_user_character_conditions(user_id: int, db: Session = Depends(get_db)):
-    return (
-        db.query(models.CharacterCondition)
-        .options(joinedload(models.CharacterCondition.character))
-        .filter(models.CharacterCondition.user_id == user_id)
-        .all()
-    )
-
-
-@app.patch(
-    "/users/{user_id}/characters/{character_id}/condition/",
-    response_model=schemas.CharacterConditionResponse,
-)
-def update_condition(
-    user_id: int,
-    character_id: int,
-    condition_update: schemas.CharacterConditionUpdate,
-    db: Session = Depends(get_db),
-):
-    condition = get_or_404(
-        db,
-        models.CharacterCondition,
-        (models.CharacterCondition.user_id == user_id)
-        & (models.CharacterCondition.character_id == character_id),
-        "컨디션 정보를 찾을 수 없습니다.",
-    )
-
-    apply_update(condition, condition_update)
-
-    if condition_update.last_updated_date is None:
-        condition.last_updated_date = date.today()
-
-    db.commit()
-    db.refresh(condition)
-    return condition
-
+# ======================================================
+# Items
+# ======================================================
 
 @app.post(
     "/items/",
@@ -597,6 +682,10 @@ def update_item(
         raise HTTPException(status_code=409, detail="이미 존재하는 item_key입니다.")
 
 
+# ======================================================
+# User Items
+# ======================================================
+
 @app.post(
     "/user-items/",
     response_model=schemas.UserItemResponse,
@@ -638,6 +727,7 @@ def create_user_item(
     db.refresh(user_item)
     return user_item
 
+
 @app.get(
     "/users/{user_id}/items/",
     response_model=List[schemas.UserItemResponse],
@@ -672,6 +762,80 @@ def update_user_item(
     db.refresh(user_item)
     return user_item
 
+
+@app.patch(
+    "/user-items/{user_item_id}/enhance/",
+    response_model=schemas.UserItemResponse,
+)
+def enhance_user_item(user_item_id: int, db: Session = Depends(get_db)):
+    user_item = (
+        db.query(models.UserItem)
+        .options(joinedload(models.UserItem.item))
+        .filter(models.UserItem.user_item_id == user_item_id)
+        .first()
+    )
+
+    if user_item is None:
+        raise HTTPException(
+            status_code=404,
+            detail="보유 아이템을 찾을 수 없습니다.",
+        )
+
+    required_count = user_item.enhance_level + 1
+
+    if user_item.quantity < required_count:
+        raise HTTPException(
+            status_code=400,
+            detail=f"강화 재료가 부족합니다. 필요 수량: {required_count}, 보유 수량: {user_item.quantity}",
+        )
+
+    user_item.quantity -= required_count
+    user_item.enhance_level += 1
+
+    db.commit()
+    db.refresh(user_item)
+
+    return user_item
+
+
+# ======================================================
+# Currency
+# ======================================================
+
+@app.get(
+    "/users/{user_id}/currency/",
+    response_model=schemas.UserCurrencyResponse,
+)
+def get_user_currency(user_id: int, db: Session = Depends(get_db)):
+    return get_or_404(
+        db,
+        models.UserCurrency,
+        models.UserCurrency.user_id == user_id,
+        "재화 정보를 찾을 수 없습니다.",
+    )
+
+
+@app.patch(
+    "/users/{user_id}/currency/",
+    response_model=schemas.UserCurrencyResponse,
+)
+def update_user_currency(
+    user_id: int,
+    currency_update: schemas.UserCurrencyUpdate,
+    db: Session = Depends(get_db),
+):
+    currency = get_or_404(
+        db,
+        models.UserCurrency,
+        models.UserCurrency.user_id == user_id,
+        "재화 정보를 찾을 수 없습니다.",
+    )
+
+    apply_update(currency, currency_update)
+
+    db.commit()
+    db.refresh(currency)
+    return currency
 
 
 @app.patch("/users/{user_id}/currency/spend-gold/")
@@ -712,6 +876,7 @@ def spend_gold(
         "updated_at": currency.updated_at,
     }
 
+
 @app.patch("/users/{user_id}/currency/spend-gem/")
 def spend_gem(
     user_id: int,
@@ -749,6 +914,11 @@ def spend_gem(
         "gem": currency.gem,
         "updated_at": currency.updated_at,
     }
+
+
+# ======================================================
+# User Stat Upgrade
+# ======================================================
 
 @app.patch(
     "/users/{user_id}/status/upgrade-attack/",
@@ -816,7 +986,6 @@ def upgrade_user_attack(
     "/users/{user_id}/status/upgrade-hp/",
     response_model=schemas.UserStatUpgradeResponse,
 )
-
 def upgrade_user_hp(
     user_id: int,
     db: Session = Depends(get_db),
@@ -874,11 +1043,11 @@ def upgrade_user_hp(
         "cost_gold": cost_gold,
     }
 
+
 @app.patch(
     "/users/{user_id}/status/upgrade-defense/",
     response_model=schemas.UserStatUpgradeResponse,
 )
-
 def upgrade_user_defense(
     user_id: int,
     db: Session = Depends(get_db),
@@ -937,79 +1106,9 @@ def upgrade_user_defense(
     }
 
 
-
-
-@app.patch(
-    "/user-items/{user_item_id}/enhance/",
-    response_model=schemas.UserItemResponse,
-)
-def enhance_user_item(user_item_id: int, db: Session = Depends(get_db)):
-    user_item = (
-        db.query(models.UserItem)
-        .options(joinedload(models.UserItem.item))
-        .filter(models.UserItem.user_item_id == user_item_id)
-        .first()
-    )
-
-    if user_item is None:
-        raise HTTPException(
-            status_code=404,
-            detail="보유 아이템을 찾을 수 없습니다.",
-        )
-
-    # Unity 쪽 RequiredCount = Level + 1 구조와 맞춤
-    required_count = user_item.enhance_level + 1
-
-    if user_item.quantity < required_count:
-        raise HTTPException(
-            status_code=400,
-            detail=f"강화 재료가 부족합니다. 필요 수량: {required_count}, 보유 수량: {user_item.quantity}",
-        )
-
-    user_item.quantity -= required_count
-    user_item.enhance_level += 1
-
-    db.commit()
-    db.refresh(user_item)
-
-    return user_item
-
-
-@app.get(
-    "/users/{user_id}/currency/",
-    response_model=schemas.UserCurrencyResponse,
-)
-def get_user_currency(user_id: int, db: Session = Depends(get_db)):
-    return get_or_404(
-        db,
-        models.UserCurrency,
-        models.UserCurrency.user_id == user_id,
-        "재화 정보를 찾을 수 없습니다.",
-    )
-
-
-@app.patch(
-    "/users/{user_id}/currency/",
-    response_model=schemas.UserCurrencyResponse,
-)
-def update_user_currency(
-    user_id: int,
-    currency_update: schemas.UserCurrencyUpdate,
-    db: Session = Depends(get_db),
-):
-    currency = get_or_404(
-        db,
-        models.UserCurrency,
-        models.UserCurrency.user_id == user_id,
-        "재화 정보를 찾을 수 없습니다.",
-    )
-
-    apply_update(currency, currency_update)
-
-    db.commit()
-    db.refresh(currency)
-    return currency
-
+# ======================================================
+# Usage Logs
+# ======================================================
 
 @app.post(
     "/usage-logs/",
@@ -1062,6 +1161,10 @@ def get_user_usage_logs(user_id: int, db: Session = Depends(get_db)):
         .all()
     )
 
+
+# ======================================================
+# Quests
+# ======================================================
 
 @app.post(
     "/quests/",
@@ -1193,7 +1296,10 @@ def complete_user_quest(user_quest_id: int, db: Session = Depends(get_db)):
     )
 
     user_quest.is_completed = True
-    user_quest.progress_value = max(user_quest.progress_value, user_quest.quest.target_value)
+    user_quest.progress_value = max(
+        user_quest.progress_value,
+        user_quest.quest.target_value,
+    )
     user_quest.completed_at = func.now()
 
     db.commit()
@@ -1231,6 +1337,7 @@ def claim_quest_reward(user_quest_id: int, db: Session = Depends(get_db)):
 
     currency.gold += user_quest.quest.reward_gold
     currency.gem += user_quest.quest.reward_gem
+    currency.updated_at = datetime.now()
 
     user_quest.is_reward_claimed = True
 
@@ -1238,6 +1345,10 @@ def claim_quest_reward(user_quest_id: int, db: Session = Depends(get_db)):
     db.refresh(user_quest)
     return user_quest
 
+
+# ======================================================
+# AI Feedback
+# ======================================================
 
 def get_recent_average_minutes(db: Session, user_id: int, exclude_date: date) -> float:
     logs = (
@@ -1367,20 +1478,12 @@ def generate_ai_feedback(
 
     db.add(feedback)
 
-    user_status = db.query(models.UserStatus).filter(
-        models.UserStatus.user_id == user_id
-    ).first()
-
-    if user_status:
-        condition = db.query(models.CharacterCondition).filter(
-            models.CharacterCondition.user_id == user_id,
-            models.CharacterCondition.character_id == user_status.current_character_id,
-        ).first()
-
-        if condition:
-            condition.condition_grade = condition_result
-            condition.condition_score = condition_grade_to_score(condition_result)
-            condition.last_updated_date = date.today()
+    # 오늘 컨디션 결과에 맞춰 user_buff 4개 갱신/생성
+    create_user_daily_buffs(
+        db=db,
+        user_id=user_id,
+        condition_result=condition_result,
+    )
 
     db.commit()
     db.refresh(feedback)
@@ -1399,6 +1502,71 @@ def get_user_ai_feedbacks(user_id: int, db: Session = Depends(get_db)):
         .all()
     )
 
+
+# ======================================================
+# User Buff
+# ======================================================
+
+@app.get("/users/{user_id}/buffs/")
+def get_user_buffs(user_id: int, db: Session = Depends(get_db)):
+    rows = db.execute(
+        text(
+            """
+            SELECT
+                ub.user_id,
+                ub.buff_id,
+                ub.buff_type,
+                ub.condition_score,
+                ub.current_effect_value,
+                ub.buff_date,
+                ub.is_active,
+                ub.applied_at,
+                ub.updated_at,
+                bi.buff_name,
+                bi.condition_grade,
+                bi.is_decaying,
+                bi.decay_value
+            FROM user_buff ub
+            JOIN buff_info bi
+                ON ub.buff_id = bi.buff_id
+            WHERE ub.user_id = :user_id
+            ORDER BY ub.buff_date DESC, ub.buff_type
+            """
+        ),
+        {"user_id": user_id},
+    ).mappings().all()
+
+    return [dict(row) for row in rows]
+
+
+@app.post("/users/{user_id}/buffs/create-today/")
+def create_today_user_buffs(user_id: int, db: Session = Depends(get_db)):
+    get_or_404(
+        db,
+        models.User,
+        models.User.user_id == user_id,
+        "사용자를 찾을 수 없습니다.",
+    )
+
+    create_user_daily_buffs(
+        db=db,
+        user_id=user_id,
+        condition_result="BEST",
+    )
+
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "오늘 기본 버프 4개를 생성했습니다.",
+        "user_id": user_id,
+    }
+
+
+# ======================================================
+# Test / Reset
+# ======================================================
+
 @app.delete("/test/user-items/reset")
 def reset_user_items(db: Session = Depends(get_db)):
     deleted_count = db.query(models.UserItem).delete()
@@ -1407,5 +1575,5 @@ def reset_user_items(db: Session = Depends(get_db)):
     return {
         "success": True,
         "message": "user_item 목록이 초기화되었습니다.",
-        "deleted_count": deleted_count
+        "deleted_count": deleted_count,
     }
