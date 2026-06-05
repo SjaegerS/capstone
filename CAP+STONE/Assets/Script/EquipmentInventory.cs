@@ -24,11 +24,22 @@ public sealed class EquipmentInventoryRecord
     public int TotalCount { get; private set; }
     public int Level { get; private set; }
     public int RequiredCount { get; private set; }
+    public string ItemKey { get; private set; }
+    public string ImageKey { get; private set; }
+    public string ItemName { get; private set; }
+    public string ItemType { get; private set; }
+    public string ItemGrade { get; private set; }
+
+    public int EnhanceGoldCost { get; private set; }
+    public bool IsEquipped { get; private set; }
+
+    public int FinalAttack { get; private set; }
+    public int FinalDefense { get; private set; }
     public EquipmentCategory Category { get; private set; }
     public EquipmentRarityGrade Rarity { get; private set; }
 
     public bool IsOwned => Level > 0 || TotalCount > 0;
-    public bool CanUpgrade => IsOwned && TotalCount >= RequiredCount && UserItemId > 0;
+    public bool CanUpgrade { get; private set; }
 
     public EquipmentInventoryRecord(
         string spriteName,
@@ -47,6 +58,16 @@ public sealed class EquipmentInventoryRecord
         Level = Mathf.Max(0, level);
         Category = category;
         Rarity = rarity;
+        ItemKey = spriteName;
+        ImageKey = spriteName;
+        ItemName = spriteName;
+        ItemType = category == EquipmentCategory.Weapon ? "WEAPON" : "ARMOR";
+        ItemGrade = ConvertRarityToGrade(rarity);
+        EnhanceGoldCost = 0;
+        IsEquipped = false;
+        FinalAttack = 0;
+        FinalDefense = 0;
+        CanUpgrade = false;
         Recalculate();
     }
 
@@ -65,6 +86,48 @@ public sealed class EquipmentInventoryRecord
         Recalculate();
     }
 
+    public void SetServerEquipmentData(
+        int userItemId,
+        int itemId,
+        string itemKey,
+        string imageKey,
+        string itemName,
+        string itemType,
+        string itemGrade,
+        int enhanceLevel,
+        int quantity,
+        int requiredCount,
+        int enhanceGoldCost,
+        bool isEquipped,
+        bool canUpgrade,
+        int finalAttack,
+        int finalDefense
+    )
+    {
+        UserItemId = Mathf.Max(0, userItemId);
+        ItemId = Mathf.Max(0, itemId);
+
+        ItemKey = string.IsNullOrEmpty(itemKey) ? SpriteName : itemKey;
+        ImageKey = string.IsNullOrEmpty(imageKey) ? ItemKey : imageKey;
+        ItemName = string.IsNullOrEmpty(itemName) ? SpriteName : itemName;
+        ItemType = string.IsNullOrEmpty(itemType) ? ItemType : itemType;
+        ItemGrade = string.IsNullOrEmpty(itemGrade) ? ItemGrade : itemGrade;
+
+        Level = Mathf.Max(0, enhanceLevel);
+        TotalCount = Mathf.Max(0, quantity);
+        RequiredCount = Mathf.Max(1, requiredCount);
+        EnhanceGoldCost = Mathf.Max(0, enhanceGoldCost);
+
+        IsEquipped = isEquipped;
+        CanUpgrade = canUpgrade;
+
+        FinalAttack = Mathf.Max(0, finalAttack);
+        FinalDefense = Mathf.Max(0, finalDefense);
+
+        Category = ItemType == "ARMOR" ? EquipmentCategory.Armor : EquipmentCategory.Weapon;
+        Rarity = ConvertGradeToRarity(ItemGrade);
+    }
+
     public void Add(int amount)
     {
         TotalCount = Mathf.Max(0, TotalCount + amount);
@@ -79,7 +142,9 @@ public sealed class EquipmentInventoryRecord
 
     public bool TryUpgradeLocalOnly()
     {
-        if (!CanUpgrade)
+        bool localCanUpgrade = IsOwned && TotalCount >= RequiredCount && UserItemId > 0;
+
+        if (!localCanUpgrade)
         {
             return false;
         }
@@ -101,6 +166,39 @@ public sealed class EquipmentInventoryRecord
 
         Level = Mathf.Max(1, Level);
         RequiredCount = Level + 1;
+    }
+
+    private static string ConvertRarityToGrade(EquipmentRarityGrade rarity)
+    {
+        switch (rarity)
+        {
+            case EquipmentRarityGrade.Rare:
+                return "RARE";
+
+            case EquipmentRarityGrade.SuperRare:
+                return "SUPER_RARE";
+
+            default:
+                return "NORMAL";
+        }
+    }
+
+    private static EquipmentRarityGrade ConvertGradeToRarity(string grade)
+    {
+        string normalized = (grade ?? "").ToUpperInvariant();
+
+        switch (normalized)
+        {
+            case "RARE":
+                return EquipmentRarityGrade.Rare;
+
+            case "SUPER_RARE":
+            case "SUPERRARE":
+                return EquipmentRarityGrade.SuperRare;
+
+            default:
+                return EquipmentRarityGrade.Normal;
+        }
     }
 }
 
@@ -298,25 +396,6 @@ public static class EquipmentInventory
                 yield return record;
             }
         }
-    }
-
-    public static bool TryUpgrade(Sprite sprite)
-    {
-        if (sprite == null)
-        {
-            return false;
-        }
-
-        EquipmentInventoryRecord record = GetRecord(sprite);
-
-        if (!record.TryUpgradeLocalOnly())
-        {
-            return false;
-        }
-
-        SaveRecord(sprite, record);
-        PlayerPrefs.Save();
-        return true;
     }
 
     public static void ResetAll()

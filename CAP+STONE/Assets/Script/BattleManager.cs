@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Collections;
 using TMPro;
+using UnityEngine.UI;
 
 public class BattleManager : MonoBehaviour
 {
@@ -33,6 +34,8 @@ public class BattleManager : MonoBehaviour
     
     [Header("API")]
     public BattleRewardApi battleRewardApi;
+    [SerializeField] private StageChallengeApi stageChallengeApi;
+
 
     [Tooltip("0이면 TitleManager에서 생성/저장한 USER_ID 사용.")]
     public int userId = 0;
@@ -43,6 +46,16 @@ public class BattleManager : MonoBehaviour
     [Header("UI")]
     public TextMeshProUGUI stageText;
     public PlayerLevelUI playerLevelUI;
+
+    [Header("Enemy Hp slider")]
+    [SerializeField] private Slider enemyHpSlider;
+    [SerializeField] private float enemyHpSmoothSpeed = 14f;
+
+    private float enemyHpDisplayValue = 0f;
+    private float enemyHpTargetValue = 0f;
+    private float enemyHpMaxValue = 1f;
+
+    private Coroutine battleLoopCoroutine;
 
     private UnitController currentPlayer;
     private UnitController currentEnemy;
@@ -55,6 +68,7 @@ public class BattleManager : MonoBehaviour
     private int dbDefensePower = 20;
 
     private bool hasDbStatus = false;
+    
 
     void Start()
     {
@@ -68,13 +82,21 @@ public class BattleManager : MonoBehaviour
         StartCoroutine(InitializeBattleFromDb());
     }
 
+    private void Update()
+    {
+        RefreshEnemyHpSliderVisual();
+    }
+
     private void ResolveReferences()
     {
         if (battleRewardApi == null)
             battleRewardApi = FindFirstObjectByType<BattleRewardApi>();
 
+        if (stageChallengeApi == null)
+            stageChallengeApi = FindFirstObjectByType<StageChallengeApi>();
+
         if (playerLevelUI == null)
-        playerLevelUI = FindFirstObjectByType<PlayerLevelUI>(FindObjectsInactive.Include);    
+            playerLevelUI = FindFirstObjectByType<PlayerLevelUI>(FindObjectsInactive.Include);    
     }
 
     private void ResolveUserId()
@@ -361,7 +383,7 @@ public class BattleManager : MonoBehaviour
             );
         }
 
-        StartCoroutine(BattleLoop());
+        battleLoopCoroutine = StartCoroutine(BattleLoop());
     }
 
     private void UpdateStageText()
@@ -392,6 +414,159 @@ public class BattleManager : MonoBehaviour
         }
 
         return null;
+    }
+
+    public void OnClickStageChallengeButton()
+    {
+        if (userId <= 0)
+        {
+            ResolveUserId();
+        }
+
+        if (userId <= 0)
+        {
+            Debug.LogError("[BattleManager] USER_ID가 없습니다. 스테이지 도전 불가");
+            return;
+        }
+
+        if (stageChallengeApi == null)
+        {
+            stageChallengeApi = FindFirstObjectByType<StageChallengeApi>();
+        }
+
+        if (stageChallengeApi == null)
+        {
+            Debug.LogError("[BattleManager] StageChallengeApi가 연결되지 않았습니다.");
+            return;
+        }
+
+        StartCoroutine(stageChallengeApi.ChallengeStage(
+            userId,
+            response =>
+            {
+                if (response == null)
+                {
+                    Debug.LogError("[BattleManager] 스테이지 도전 응답이 null입니다.");
+                    return;
+                }
+
+                int challengeStage = Mathf.Max(1, response.current_stage);
+
+                Debug.Log(
+                    $"[BattleManager] 스테이지 도전 시작 | " +
+                    $"user_id: {userId}, current_stage: {challengeStage}, " +
+                    $"max_cleared_stage: {response.max_cleared_stage}"
+                );
+
+                RestartBattleAtStage(challengeStage);
+            },
+            error =>
+            {
+                Debug.LogError($"[BattleManager] 스테이지 도전 실패: {error}");
+            }
+        ));
+    }
+
+    private void UpdateEnemyHpUI(bool instant = false)
+    {
+        if (currentEnemy == null)
+        {
+            SetEnemyHpUI(0f, 1f, instant);
+            return;
+        }
+
+        SetEnemyHpUI(
+            currentEnemy.CurrentHp,
+            currentEnemy.MaxHp,
+            instant
+        );
+    }
+
+    private void HandleEnemyHpChanged(float currentHp, float maxHp)
+    {
+        SetEnemyHpUI(currentHp, maxHp, false);
+    }
+
+    private void SetEnemyHpUI(float currentHp, float maxHp, bool instant)
+    {
+        if (enemyHpSlider == null)
+            return;
+
+        enemyHpMaxValue = Mathf.Max(1f, maxHp);
+        enemyHpTargetValue = Mathf.Clamp(currentHp, 0f, enemyHpMaxValue);
+
+        enemyHpSlider.minValue = 0f;
+        enemyHpSlider.maxValue = enemyHpMaxValue;
+
+        if (instant)
+        {
+            enemyHpDisplayValue = enemyHpTargetValue;
+            enemyHpSlider.value = enemyHpDisplayValue;
+        }
+    }
+
+private void RefreshEnemyHpSliderVisual()
+{
+    if (enemyHpSlider == null)
+        return;
+
+    enemyHpSlider.minValue = 0f;
+    enemyHpSlider.maxValue = Mathf.Max(1f, enemyHpMaxValue);
+
+    enemyHpDisplayValue = Mathf.Lerp(
+        enemyHpDisplayValue,
+        enemyHpTargetValue,
+        Time.deltaTime * enemyHpSmoothSpeed
+    );
+
+    if (Mathf.Abs(enemyHpDisplayValue - enemyHpTargetValue) < 0.25f)
+    {
+        enemyHpDisplayValue = enemyHpTargetValue;
+    }
+
+    enemyHpSlider.value = Mathf.Clamp(
+        enemyHpDisplayValue,
+        0f,
+        enemyHpSlider.maxValue
+    );
+}
+
+    private void RestartBattleAtStage(int stage)
+    {
+        stage = Mathf.Max(1, stage);
+
+
+        if (battleLoopCoroutine != null)
+        {
+            StopCoroutine(battleLoopCoroutine);
+            battleLoopCoroutine = null;
+        }
+
+        if (currentPlayer != null)
+        {
+            currentPlayer.SetTarget(null);
+            Destroy(currentPlayer.gameObject);
+            currentPlayer = null;
+        }
+
+        if (currentEnemy != null)
+        {
+            currentEnemy.SetTarget(null);
+            Destroy(currentEnemy.gameObject);
+            currentEnemy = null;
+        }
+
+        UpdateEnemyHpUI(true);
+
+        currentStage = stage;
+        startingStage = stage;
+        roundCount = 0;
+
+        UpdateStageText(currentStage);
+
+        battleLoopCoroutine = StartCoroutine(BattleLoop());
+
+        Debug.Log($"[BattleManager] 전투 재시작 | Stage {stage}");
     }
 
     private IEnumerator BattleLoop()
@@ -455,7 +630,13 @@ public class BattleManager : MonoBehaviour
                 yield break;
             }
 
+            // 몬스터 머리 위 HP바는 사용하지 않음
+            currentEnemy.SetWorldHealthBarEnabled(false);
+
             currentEnemy.Initialize(enemyStats, enemySpawn.position);
+
+            // 스테이지 아래 EnemyHp Slider 갱신
+            UpdateEnemyHpUI(true);
 
             bool roundDone = false;
             bool playerWon = false;
@@ -489,10 +670,23 @@ public class BattleManager : MonoBehaviour
             currentPlayer.MoveTo(playerStopPos);
             currentEnemy.MoveTo(enemyStopPos);
 
+            float moveWaitTime = 0f;
+            float maxMoveWaitTime = 1.2f;
+
             yield return new WaitUntil(() =>
-                roundDone ||
-                Vector3.Distance(currentPlayer.transform.position, playerStopPos) <= 0.5f
-            );
+            {
+                moveWaitTime += Time.deltaTime;
+
+                bool playerArrived =
+                    currentPlayer != null &&
+                    Vector3.Distance(currentPlayer.transform.position, playerStopPos) <= 0.5f;
+
+                bool enemyArrived =
+                    currentEnemy != null &&
+                    Vector3.Distance(currentEnemy.transform.position, enemyStopPos) <= 0.5f;
+
+                return roundDone || (playerArrived && enemyArrived) || moveWaitTime >= maxMoveWaitTime;
+            });
 
             if (!roundDone)
             {
@@ -500,7 +694,15 @@ public class BattleManager : MonoBehaviour
                 currentEnemy.StartCombat();
             }
 
-            yield return new WaitUntil(() => roundDone);
+            while (!roundDone)
+            {
+                UpdateEnemyHpUI(false);
+                yield return null;
+            }
+
+            // 죽는 순간의 HP 0을 확실하게 반영
+            UpdateEnemyHpUI(true);
+            yield return new WaitForSeconds(0.08f);
 
             if (playerWon)
             {
@@ -524,6 +726,8 @@ public class BattleManager : MonoBehaviour
                         currentStage,
                         rewardGold,
                         rewardExp,
+                        1,
+                        true,
                         response =>
                         {
                             if (response == null)
@@ -532,22 +736,20 @@ public class BattleManager : MonoBehaviour
                                 return;
                             }
 
-                            nextStage = Mathf.Max(nextStage, response.current_stage);
+                            dbSaveSuccess = true;
 
-                            // 골드 즉시 갱신
+                            nextStage = Mathf.Max(1, response.current_stage);
+
                             GoldManager.Instance?.SetGold(response.gold);
                             CurrencyUIManager.Instance?.SetGold(response.gold);
-
-                            // 젬 즉시 갱신
                             CurrencyUIManager.Instance?.SetGem(response.gem);
 
-                            // 레벨 / 경험치 바 즉시 갱신
                             if (playerLevelUI != null)
                             {
                                 playerLevelUI.SetStatus(
                                     response.level,
                                     response.exp,
-                                    response.gem
+                                    response.required_exp
                                 );
                             }
 
@@ -586,6 +788,7 @@ public class BattleManager : MonoBehaviour
 
                 Destroy(currentEnemy.gameObject);
                 currentEnemy = null;
+                UpdateEnemyHpUI(true);
 
                 currentStage = nextStage;
                 UpdateStageText(currentStage);
@@ -594,7 +797,44 @@ public class BattleManager : MonoBehaviour
             }
             else
             {
-                Debug.Log($"[BattleManager] 플레이어 사망 — 스테이지 {currentStage} 재시도");
+                Debug.Log($"[BattleManager] 플레이어 사망 — 스테이지 {currentStage} 실패");
+
+                int failedStage = currentStage;
+
+                if (battleRewardApi != null && userId > 0)
+                {
+                    yield return StartCoroutine(battleRewardApi.SaveBattleReward(
+                        userId,
+                        failedStage,
+                        0,
+                        0,
+                        0,
+                        false,
+                        response =>
+                        {
+                            if (response == null)
+                            {
+                                Debug.LogError("[BattleManager] 실패 처리 응답이 null입니다.");
+                                return;
+                            }
+
+                            currentStage = Mathf.Max(1, response.current_stage);
+                            startingStage = currentStage;
+
+                            UpdateStageText(currentStage);
+
+                            Debug.Log(
+                                $"[BattleManager] 스테이지 실패 처리 완료 | " +
+                                $"current_stage: {response.current_stage}, " +
+                                $"max_cleared_stage: {response.max_cleared_stage}"
+                            );
+                        },
+                        error =>
+                        {
+                            Debug.LogError($"[BattleManager] 스테이지 실패 저장 실패: {error}");
+                        }
+                    ));
+                }
 
                 currentPlayer.SetTarget(null);
 
@@ -604,6 +844,7 @@ public class BattleManager : MonoBehaviour
                     Destroy(currentEnemy.gameObject);
                     currentEnemy = null;
                 }
+                UpdateEnemyHpUI(true);
 
                 yield return new WaitForSeconds(roundInterval);
             }

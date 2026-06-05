@@ -6,21 +6,23 @@ public static class EquipmentInventoryView
 {
     public static void RefreshAll()
     {
-        RefreshContent("WeaponContent");
-        RefreshContent("ArmorContent");
+        RefreshContent("WeaponContent", "WEAPON");
+        RefreshContent("ArmorContent", "ARMOR");
     }
 
-    private static void RefreshContent(string contentName)
+    private static void RefreshContent(string contentName, string itemType)
     {
         Transform content = FindSceneTransform(contentName);
         if (content == null)
         {
+            Debug.LogWarning(contentName + "을 찾지 못했습니다.");
             return;
         }
 
         for (int i = 0; i < content.childCount; i++)
         {
             Transform slot = content.GetChild(i);
+
             if (IsSpacer(slot))
             {
                 ClearSpacer(slot);
@@ -32,7 +34,7 @@ public static class EquipmentInventoryView
             Sprite sprite = GetCurrentSlotSprite(slot);
             if (sprite != null)
             {
-                ApplySlot(slot, sprite);
+                ApplySlot(slot, sprite, itemType);
             }
             else
             {
@@ -84,7 +86,7 @@ public static class EquipmentInventoryView
         }
     }
 
-    private static void ApplySlot(Transform slot, Sprite sprite)
+    private static void ApplySlot(Transform slot, Sprite sprite, string itemType)
     {
         if (slot == null || sprite == null)
         {
@@ -95,19 +97,22 @@ public static class EquipmentInventoryView
 
         EquipmentInventoryRecord record = EquipmentInventory.GetRecord(sprite);
 
+        // 기존 "클릭하면 바로 강화" 컴포넌트 제거
         EquipmentSlotUpgradeButton upgradeButton = slot.GetComponent<EquipmentSlotUpgradeButton>();
-        if (upgradeButton == null)
+        if (upgradeButton != null)
         {
-            upgradeButton = slot.gameObject.AddComponent<EquipmentSlotUpgradeButton>();
+            Object.Destroy(upgradeButton);
         }
 
-        upgradeButton.Configure(sprite, record.UserItemId);
+        // 슬롯 클릭 시 상세창 열기
+        ConfigureSlotButton(slot, record);
 
         Image icon = FindIconImage(slot);
         if (icon != null)
         {
             icon.preserveAspect = true;
             icon.color = record.IsOwned ? Color.white : new Color(0.16f, 0.16f, 0.16f, 0.75f);
+            icon.raycastTarget = false;
         }
 
         TextMeshProUGUI levelText = GetOrCreateLevelText(slot);
@@ -142,12 +147,80 @@ public static class EquipmentInventoryView
         }
     }
 
+    private static void ConfigureSlotButton(
+        Transform slot,
+        EquipmentInventoryRecord record
+    )
+    {
+        Button button = slot.GetComponent<Button>();
+        if (button == null)
+        {
+            button = slot.gameObject.AddComponent<Button>();
+        }
+
+        button.transition = Selectable.Transition.None;
+        button.onClick.RemoveAllListeners();
+
+        button.onClick.AddListener(() =>
+        {
+            if (record == null || !record.IsOwned)
+            {
+                Debug.Log("보유하지 않은 장비입니다.");
+                return;
+            }
+
+            ItemDetailPanel detailPanel = FindItemDetailPanel();
+            if (detailPanel == null)
+            {
+                Debug.LogError("ItemDetailPanel을 찾지 못했습니다. ItemDetailRoot에 ItemDetailPanel.cs가 붙어있는지 확인하세요.");
+                return;
+            }
+
+            detailPanel.Open(record);
+        });
+    }
+
+    private static ItemDetailPanel FindItemDetailPanel()
+    {
+        ItemDetailPanel[] panels = Resources.FindObjectsOfTypeAll<ItemDetailPanel>();
+
+        foreach (ItemDetailPanel panel in panels)
+        {
+            if (panel == null)
+            {
+                continue;
+            }
+
+            if (!panel.gameObject.scene.IsValid() || !panel.gameObject.scene.isLoaded)
+            {
+                continue;
+            }
+
+            return panel;
+        }
+
+        return null;
+    }
+
     private static void ApplyEmptySlot(Transform slot)
     {
+        EquipmentSlotUpgradeButton upgradeButton = slot.GetComponent<EquipmentSlotUpgradeButton>();
+        if (upgradeButton != null)
+        {
+            Object.Destroy(upgradeButton);
+        }
+
+        Button button = slot.GetComponent<Button>();
+        if (button != null)
+        {
+            button.onClick.RemoveAllListeners();
+        }
+
         Image icon = FindIconImage(slot);
         if (icon != null)
         {
             icon.color = new Color(0.16f, 0.16f, 0.16f, 0.75f);
+            icon.raycastTarget = false;
         }
 
         TextMeshProUGUI levelText = GetOrCreateLevelText(slot);
@@ -226,6 +299,7 @@ public static class EquipmentInventoryView
         {
             if (text.name.Contains("LV") || text.text.Contains("LV"))
             {
+                text.raycastTarget = false;
                 return text;
             }
         }
@@ -245,6 +319,7 @@ public static class EquipmentInventoryView
         levelText.fontSize = 22f;
         levelText.color = Color.white;
         levelText.raycastTarget = false;
+
         return levelText;
     }
 
@@ -287,6 +362,14 @@ public static class EquipmentInventoryView
         Slider slider = slot.GetComponentInChildren<Slider>(true);
         if (slider != null)
         {
+            slider.interactable = false;
+
+            Image[] images = slider.GetComponentsInChildren<Image>(true);
+            foreach (Image image in images)
+            {
+                image.raycastTarget = false;
+            }
+
             return slider;
         }
 
@@ -313,6 +396,7 @@ public static class EquipmentInventoryView
 
         background.SetAsFirstSibling();
         fillArea.SetAsLastSibling();
+
         return newSlider;
     }
 
@@ -330,6 +414,7 @@ public static class EquipmentInventoryView
         Image image = imageObject.GetComponent<Image>();
         image.color = color;
         image.raycastTarget = false;
+
         return rect;
     }
 
@@ -343,12 +428,14 @@ public static class EquipmentInventoryView
         rect.anchorMax = Vector2.one;
         rect.offsetMin = Vector2.zero;
         rect.offsetMax = Vector2.zero;
+
         return rect;
     }
 
     private static Transform FindSceneTransform(string objectName)
     {
         Transform[] transforms = Resources.FindObjectsOfTypeAll<Transform>();
+
         foreach (Transform transform in transforms)
         {
             if (transform == null || !transform.gameObject.scene.IsValid() || !transform.gameObject.scene.isLoaded)

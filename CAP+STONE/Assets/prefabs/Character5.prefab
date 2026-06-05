@@ -192,6 +192,7 @@ GameObject:
   m_Component:
   - component: {fileID: 6540511002390664073}
   - component: {fileID: 7675304794553801317}
+  - component: {fileID: -7841019347237559363}
   m_Layer: 0
   m_Name: Character5
   m_TagString: Untagged
@@ -231,6 +232,33 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::UnitController
   healthBarPrefab: {fileID: 758894339687789687, guid: 6d1cc1346af67754dbe86ee31a32294b, type: 3}
+  useWorldHealthBar: 1
+  attackLungeDistance: 0.35
+  attackLungeDuration: 0.08
+  attackReturnDuration: 0.1
+  hitFlashColor: {r: 1, g: 0.45, b: 0.45, a: 1}
+--- !u!95 &-7841019347237559363
+Animator:
+  serializedVersion: 7
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6017256285529019435}
+  m_Enabled: 1
+  m_Avatar: {fileID: 0}
+  m_Controller: {fileID: 0}
+  m_CullingMode: 0
+  m_UpdateMode: 0
+  m_ApplyRootMotion: 0
+  m_LinearVelocityBlending: 0
+  m_StabilizeFeet: 0
+  m_AnimatePhysics: 0
+  m_WarningMessage: 
+  m_HasTransformHierarchy: 1
+  m_AllowConstantClipSamplingOptimization: 1
+  m_KeepAnimatorStateOnDisable: 0
+  m_WriteDefaultValuesOnDisable: 0
 --- !u!1 &6659849005889850888
 GameObject:
   m_ObjectHideFlags: 0

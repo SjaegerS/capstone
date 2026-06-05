@@ -12,7 +12,7 @@ public class BattleRewardApi : MonoBehaviour
 
     [Header("API")]
     [SerializeField] private string baseUrl = "http://127.0.0.1:8000";
-    [SerializeField] private string rewardEndpoint = "/battle/reward";
+    //[SerializeField] private string rewardEndpoint = "/battle/reward";
 
     [Header("User")]
     [Tooltip("0이면 TitleManager에서 저장한 USER_ID 사용. 테스트로 특정 유저를 강제할 때만 입력.")]
@@ -51,6 +51,8 @@ public class BattleRewardApi : MonoBehaviour
         public int stage_id;
         public int reward_gold;
         public int reward_exp;
+        public int kill_count_add;
+        public bool is_clear;
     }
 
     [Serializable]
@@ -60,8 +62,11 @@ public class BattleRewardApi : MonoBehaviour
         public string message;
 
         public int user_id;
+        public bool is_clear;
+
         public int cleared_stage;
         public int current_stage;
+        public int max_cleared_stage;
 
         public int reward_gold;
         public int reward_exp;
@@ -205,31 +210,36 @@ public class BattleRewardApi : MonoBehaviour
         }
     }
 
-    public IEnumerator SaveBattleReward(
+   public IEnumerator SaveBattleReward(
         int userId,
         int stageId,
         int rewardGold,
         int rewardExp,
-        Action<BattleRewardResponse> onSuccess = null,
-        Action<string> onError = null)
+        int killCountAdd,
+        bool isClear,
+        Action<BattleRewardResponse> onSuccess,
+        Action<string> onError
+    )
     {
-        string url = $"{baseUrl}{rewardEndpoint}";
+        string url = $"{baseUrl}/battle/reward";
 
-        BattleRewardRequest data = new BattleRewardRequest
+        BattleRewardRequest body = new BattleRewardRequest
         {
             user_id = userId,
             stage_id = stageId,
             reward_gold = rewardGold,
-            reward_exp = rewardExp
+            reward_exp = rewardExp,
+            kill_count_add = killCountAdd,
+            is_clear = isClear
         };
 
-        string json = JsonUtility.ToJson(data);
+        string json = JsonUtility.ToJson(body);
 
         using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
         {
-            byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
+            byte[] jsonBytes = System.Text.Encoding.UTF8.GetBytes(json);
 
-            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.uploadHandler = new UploadHandlerRaw(jsonBytes);
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
 
@@ -237,37 +247,23 @@ public class BattleRewardApi : MonoBehaviour
 
             if (request.result != UnityWebRequest.Result.Success)
             {
-                string error =
-                    $"SaveBattleReward 실패\n" +
+                string errorMessage =
+                    "SaveBattleReward 실패\n" +
                     $"url: {url}\n" +
                     $"code: {request.responseCode}\n" +
                     $"error: {request.error}\n" +
                     $"response: {request.downloadHandler.text}";
 
-                Debug.LogError(error);
-                onError?.Invoke(error);
+                onError?.Invoke(errorMessage);
                 yield break;
             }
 
-            try
-            {
-                BattleRewardResponse response =
-                    JsonUtility.FromJson<BattleRewardResponse>(request.downloadHandler.text);
+            BattleRewardResponse response =
+                JsonUtility.FromJson<BattleRewardResponse>(request.downloadHandler.text);
 
-                onSuccess?.Invoke(response);
-            }
-            catch (Exception e)
-            {
-                string error =
-                    $"SaveBattleReward JSON 파싱 실패: {e.Message}\n" +
-                    $"response: {request.downloadHandler.text}";
-
-                Debug.LogError(error);
-                onError?.Invoke(error);
-            }
+            onSuccess?.Invoke(response);
         }
     }
-
     public IEnumerator AddGoldToUser(
         int userId,
         int amount,
