@@ -46,12 +46,15 @@ public class GameManager : MonoBehaviour
         int completedQuests = 2;
 
         // 기획서 5차 기준 잠금해제 퀘스트가 제거된 최신 퀘스트 목록 반영
+        // DB 테이블(quest)과 완벽하게 일치하는 타입 셋팅 (7번 메타 퀘스트 제외)
         AvailableQuest[] availableQuests = new AvailableQuest[]
         {
-            new AvailableQuest { quest_id = 1, name = "어제 사용시간 평균 이하로 사용" },
-            new AvailableQuest { quest_id = 2, name = "스탯 강화 10회 진행" },
-            new AvailableQuest { quest_id = 3, name = "골드 컨텐츠 3회 플레이" },
-            new AvailableQuest { quest_id = 4, name = "스테이지 10회 클리어" }
+            new AvailableQuest { quest_id = 1, quest_type = "하" },
+            new AvailableQuest { quest_id = 2, quest_type = "하" },
+            new AvailableQuest { quest_id = 3, quest_type = "중" },
+            new AvailableQuest { quest_id = 4, quest_type = "중" },
+            new AvailableQuest { quest_id = 5, quest_type = "상" },
+            new AvailableQuest { quest_id = 6, quest_type = "공통" }
         };
 
         // ==========================================================

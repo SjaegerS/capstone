@@ -331,7 +331,7 @@ class Quest(Base):
     __tablename__ = "quest"
 
     quest_id = Column(BigInteger, primary_key=True, autoincrement=True)
-    quest_name = Column(String(100), nullable=False)
+    quest_type = Column(String(100), nullable=False)
     quest_description = Column(Text, nullable=True)
 
     is_condition_check = Column(Boolean, default=False)

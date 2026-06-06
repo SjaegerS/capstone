@@ -25,7 +25,7 @@ public class AIFeedbackResponse
 public class AvailableQuest
 {
     public int quest_id;
-    public string name;
+    public string quest_type;
 }
 
 // 검산이 끝난 최종 결과(게임/DB에 넘길 신뢰 가능한 값)
@@ -52,7 +52,6 @@ public class AIManager : MonoBehaviour
     private const string MODEL = "gemini-2.5-flash";
     private string ApiUrl => $"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent";
 
-    // ── 고정 폴백 멘트 (기획서 5차 원문) ─────────────────────────
     private static readonly Dictionary<string, string> FALLBACK_MSG = new Dictionary<string, string>
     {
         { "상", "사용시간이 평균에 비해 감소 했습니다. 훌륭합니다. 앞으로도 계속 줄여봅시다." },
@@ -60,9 +59,9 @@ public class AIManager : MonoBehaviour
         { "하", "오늘은 핸드폰을 평소보다 많이 켰었습니다. 그만큼 바쁜 생활을 하셨군요. 내일은 잠시 일을 내려놓고 핸드폰을 쉬어주는게 어떨까요?" }
     };
 
-    // ── 시스템 지침 (AI Studio에서 확정한 프롬프트) ──────────────
+    // ── 고정 폴백 멘트 (기획서 5차 원문) ─────────────────────────
     private readonly string systemInstructionText = @"역할: 당신은 방치형 키우기 게임의 플레이어 컨디션을 관리하는 AI 에이전트입니다.
-목표: 플레이어의 7일간 핸드폰 사용 시간 평균과 어제 사용 시간을 비교 분석하여 등급을 판정하고, 기획된 고정 피드백 멘트 및 맞춤형 퀘스트 ID 3개를 JSON 형식으로 반환합니다.
+목표: 플레이어의 7일간 평균과 어제 사용 시간을 분석하여 등급을 판정하고, 고정 피드백 멘트 및 맞춤형 퀘스트 ID 3개를 JSON으로 반환합니다.
 
 [상태 판정 규칙]
 1. 평균 산출: 'recent_7days_minutes' 배열의 평균값을 구합니다.
@@ -71,12 +70,15 @@ public class AIManager : MonoBehaviour
 4. 사용시간 등급(pattern_summary): 70점 이상 ""상"", 30~70점 미만 ""중"", 30점 미만 ""하""
 5. 컨디션(condition_result): 'yesterday_quest_completed' 2개 이상 ""BEST"", 1개 ""GOOD"", 0개 ""NORMAL""
 
-[피드백 및 퀘스트]
-1. feedback_content: 등급별 아래 문구를 임의 수정 없이 그대로 출력
+[피드백 및 퀘스트 할당 로직]
+1. feedback_content: 등급별 문구를 임의 수정 없이 출력
    - 상: ""사용시간이 평균에 비해 감소 했습니다. 훌륭합니다. 앞으로도 계속 줄여봅시다.""
    - 중: ""평균 사용시간을 유지했습니다. 이는 한발짝만 더 내밀면 성장할 수 있다는 좋은 신호입니다.""
    - 하: ""오늘은 핸드폰을 평소보다 많이 켰었습니다. 그만큼 바쁜 생활을 하셨군요. 내일은 잠시 일을 내려놓고 핸드폰을 쉬어주는게 어떨까요?""
-2. assigned_quest_ids: 입력 'available_quests' 안에 존재하는 quest_id 중 등급에 적합한 3개만 배열로 출력. 존재하지 않는 ID 생성 금지.
+2. assigned_quest_ids: 'available_quests' 목록에서 아래 조건에 맞는 퀘스트의 ID를 골라 배열로 출력. (없는 ID 생성 금지)
+   - 등급이 '하'인 경우: quest_type이 '하' 또는 '공통'인 퀘스트
+   - 등급이 '중'인 경우: quest_type이 '중' 또는 '공통'인 퀘스트
+   - 등급이 '상'인 경우: quest_type이 '상', '중', '공통'인 퀘스트
 
 [출력 형식] 부연 설명 없이 순수 JSON 객체만 반환.";
 
@@ -142,27 +144,41 @@ public class AIManager : MonoBehaviour
         }
 
         // (5) 퀘스트 id — available 목록 내 존재하는 것만, 부족하면 목록서 채움
-        var availableIds = (available ?? new AvailableQuest[0]).Select(q => q.quest_id).ToList();
+        // (5) 퀘스트 id — available 목록 내 존재하는 것만
         var picked = new List<int>();
+        var allowedTypes = new List<string>();
+
+        // 요청하신 등급별 타입 허용 규칙
+        if (result.Grade == "하") allowedTypes = new List<string> { "하", "공통" };
+        else if (result.Grade == "중") allowedTypes = new List<string> { "중", "공통" };
+        else if (result.Grade == "상") allowedTypes = new List<string> { "중", "상", "공통" };
+
+        // 현재 들어온 퀘스트 풀에서 허용된 타입의 ID만 골라냄
+        var validQuestIds = (available ?? new AvailableQuest[0])
+            .Where(q => allowedTypes.Contains(q.quest_type))
+            .Select(q => q.quest_id)
+            .ToList();
+
+        // AI가 정상 응답했고, 고른 ID가 허용된 타입 안에 있다면 수용
         if (ai != null && ai.assigned_quest_ids != null)
         {
             foreach (int id in ai.assigned_quest_ids)
-                if (availableIds.Contains(id) && !picked.Contains(id))
+                if (validQuestIds.Contains(id) && !picked.Contains(id))
                     picked.Add(id);
         }
-        // 3개 미만이면 available 앞쪽에서 보충
-        foreach (int id in availableIds)
-        {
-            if (picked.Count >= 3) break;
-            if (!picked.Contains(id)) picked.Add(id);
-        }
-        if (ai == null || ai.assigned_quest_ids == null ||
-            !ai.assigned_quest_ids.All(id => availableIds.Contains(id))) hadError = true;
-        result.QuestIds = picked;
 
+        // [동적 강제 배정] AI가 실패했거나 3개를 못 채웠을 경우, 허용된 타입 목록에서 무조건 3개를 긁어옴
+        if (picked.Count == 0)
+        {
+            picked.AddRange(validQuestIds);
+            hadError = true;
+        }
+
+        result.QuestIds = picked;
         result.AiHadError = hadError;
         return result;
     }
+
 
     // ============================================================
     //  메인 API 호출 코루틴
