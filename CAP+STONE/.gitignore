@@ -58,3 +58,7 @@ venv/
 
 # Environment variables
 .env
+
+# API 키 (절대 커밋 금지)
+Assets/Resources/gemini_key.txt
+Assets/Resources/gemini_key.txt.meta

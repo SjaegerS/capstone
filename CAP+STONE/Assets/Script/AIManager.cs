@@ -45,7 +45,17 @@ public class AIManager : MonoBehaviour
     // 보안: 키를 코드에 직접 박지 말 것. 별도 파일/환경에서 주입.
     //  - 테스트 단계: 인스펙터에 입력하거나 ApiConfig 같은 별도 클래스에서 로드
     //  - A 방식(직접 연결)이라 클라 노출은 불가피하나, 최소한 소스/깃에는 안 올림
-    [SerializeField] private string apiKey = ""; // TODO: 인스펙터 또는 외부에서 주입
+    private string apiKey;
+
+    void Awake()
+    {
+        // Resources 폴더의 키 파일을 런타임에 로드 (씬·코드에 키 안 박힘)
+        TextAsset keyAsset = Resources.Load<TextAsset>("gemini_key");
+        if (keyAsset != null)
+            apiKey = keyAsset.text.Trim();
+        else
+            Debug.LogError("[AIManager] gemini_key.txt를 Assets/Resources/에 두세요.");
+    }
 
     // 스크린샷에서 확인된 실제 사용 모델 (AI Studio: gemini-2.5-flash)
     // 단일 응답 엔드포인트(generateContent) 사용. 스트리밍 아님.
