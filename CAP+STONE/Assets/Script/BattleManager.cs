@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 using System.Collections;
 using TMPro;
 using UnityEngine.UI;
@@ -19,6 +20,11 @@ public class BattleManager : MonoBehaviour
     public int playerHpUpgradeLevel = 1;
     public int playerAttackUpgradeLevel = 1;
     public int playerDefenseUpgradeLevel = 1;
+
+    [Header("Stage Challenge UI")]
+    [SerializeField] private Button stageChallengeButton;
+
+    private bool isStageChallengeRunning = false;
 
     [Tooltip("시작 스테이지 번호")]
     public int startingStage = 1;
@@ -222,6 +228,12 @@ public class BattleManager : MonoBehaviour
         ApplyCurrentPlayerStats();
     }
 
+    private void FinishStageChallenge()
+    {
+        isStageChallengeRunning = false;
+        SetStageChallengeButtonInteractable(true);
+    }
+
     public void ApplyPlayerUpgradeLevel(bool isHealthUpgrade, int upgradeLvl)
     {
         int safeUpgradeLvl = Mathf.Max(1, upgradeLvl);
@@ -257,7 +269,7 @@ public class BattleManager : MonoBehaviour
 
         if (hasDbStatus)
         {
-            playerStats = CharacterStats.CreatePlayerFromDb(
+            playerStats = CalculateFinalPlayerStatsFromDb(
                 dbMaxHp,
                 dbAttackPower,
                 dbDefensePower
@@ -265,13 +277,82 @@ public class BattleManager : MonoBehaviour
         }
         else
         {
-            playerStats = CharacterStats.CreatePlayer(
+            playerStats = CalculateFinalPlayerStatsFromUpgradeLevel(
                 playerHpUpgradeLevel,
-                playerAttackUpgradeLevel
+                playerAttackUpgradeLevel,
+                playerDefenseUpgradeLevel
             );
         }
 
         currentPlayer.ApplyStats(playerStats);
+    }
+
+    private CharacterStats CalculateFinalPlayerStatsFromDb(
+        int baseMaxHp,
+        int baseAttackPower,
+        int baseDefensePower
+    )
+    {
+        EquipmentStatSummary equipmentStats =
+            EquipmentInventory.CalculateEquippedStatSummary();
+
+        int finalMaxHp = GameBalance.CalculateFinalHPFromDbValue(
+            baseMaxHp,
+            equipmentStats.HpMainEffectSum,
+            equipmentStats.HpSubEffectMultiplier
+        );
+
+        int finalAttackPower = GameBalance.CalculateFinalAttackPowerFromDbValue(
+            baseAttackPower,
+            equipmentStats.AttackMainEffectSum,
+            equipmentStats.AttackSubEffectMultiplier
+        );
+
+        int finalDefensePower = GameBalance.CalculateFinalDefensePowerFromDbValue(
+            baseDefensePower,
+            equipmentStats.DefenseMainEffectSum,
+            equipmentStats.DefenseSubEffectMultiplier
+        );
+
+        return CharacterStats.CreatePlayerFromDb(
+            finalMaxHp,
+            finalAttackPower,
+            finalDefensePower
+        );
+    }
+
+    private CharacterStats CalculateFinalPlayerStatsFromUpgradeLevel(
+        int hpUpgradeLvl,
+        int attackUpgradeLvl,
+        int defenseUpgradeLvl
+    )
+    {
+        EquipmentStatSummary equipmentStats =
+            EquipmentInventory.CalculateEquippedStatSummary();
+
+        int finalMaxHp = GameBalance.CalculateFinalHP(
+            hpUpgradeLvl,
+            equipmentStats.HpMainEffectSum,
+            equipmentStats.HpSubEffectMultiplier
+        );
+
+        int finalAttackPower = GameBalance.CalculateFinalAttackPower(
+            attackUpgradeLvl,
+            equipmentStats.AttackMainEffectSum,
+            equipmentStats.AttackSubEffectMultiplier
+        );
+
+        int finalDefensePower = GameBalance.CalculateFinalDefensePower(
+            defenseUpgradeLvl,
+            equipmentStats.DefenseMainEffectSum,
+            equipmentStats.DefenseSubEffectMultiplier
+        );
+
+        return CharacterStats.CreatePlayerFromDb(
+            finalMaxHp,
+            finalAttackPower,
+            finalDefensePower
+        );
     }
 
     public void ApplyPlayerStatsFromDb(
@@ -418,6 +499,12 @@ public class BattleManager : MonoBehaviour
 
     public void OnClickStageChallengeButton()
     {
+        if (isStageChallengeRunning)
+        {
+            Debug.Log("[BattleManager] 이미 스테이지 도전 중입니다.");
+            return;
+        }
+
         if (userId <= 0)
         {
             ResolveUserId();
@@ -440,6 +527,9 @@ public class BattleManager : MonoBehaviour
             return;
         }
 
+        isStageChallengeRunning = true;
+        SetStageChallengeButtonInteractable(false);
+
         StartCoroutine(stageChallengeApi.ChallengeStage(
             userId,
             response =>
@@ -447,6 +537,9 @@ public class BattleManager : MonoBehaviour
                 if (response == null)
                 {
                     Debug.LogError("[BattleManager] 스테이지 도전 응답이 null입니다.");
+
+                    isStageChallengeRunning = false;
+                    SetStageChallengeButtonInteractable(true);
                     return;
                 }
 
@@ -463,8 +556,17 @@ public class BattleManager : MonoBehaviour
             error =>
             {
                 Debug.LogError($"[BattleManager] 스테이지 도전 실패: {error}");
+
+                isStageChallengeRunning = false;
+                SetStageChallengeButtonInteractable(true);
             }
         ));
+    }
+
+    private void SetStageChallengeButtonInteractable(bool value)
+    {
+        if (stageChallengeButton != null)
+            stageChallengeButton.interactable = value;
     }
 
     private void UpdateEnemyHpUI(bool instant = false)
@@ -505,31 +607,31 @@ public class BattleManager : MonoBehaviour
         }
     }
 
-private void RefreshEnemyHpSliderVisual()
-{
-    if (enemyHpSlider == null)
-        return;
-
-    enemyHpSlider.minValue = 0f;
-    enemyHpSlider.maxValue = Mathf.Max(1f, enemyHpMaxValue);
-
-    enemyHpDisplayValue = Mathf.Lerp(
-        enemyHpDisplayValue,
-        enemyHpTargetValue,
-        Time.deltaTime * enemyHpSmoothSpeed
-    );
-
-    if (Mathf.Abs(enemyHpDisplayValue - enemyHpTargetValue) < 0.25f)
+    private void RefreshEnemyHpSliderVisual()
     {
-        enemyHpDisplayValue = enemyHpTargetValue;
-    }
+        if (enemyHpSlider == null)
+            return;
 
-    enemyHpSlider.value = Mathf.Clamp(
-        enemyHpDisplayValue,
-        0f,
-        enemyHpSlider.maxValue
-    );
-}
+        enemyHpSlider.minValue = 0f;
+        enemyHpSlider.maxValue = Mathf.Max(1f, enemyHpMaxValue);
+
+        enemyHpDisplayValue = Mathf.Lerp(
+            enemyHpDisplayValue,
+            enemyHpTargetValue,
+            Time.deltaTime * enemyHpSmoothSpeed
+        );
+
+        if (Mathf.Abs(enemyHpDisplayValue - enemyHpTargetValue) < 0.25f)
+        {
+            enemyHpDisplayValue = enemyHpTargetValue;
+        }
+
+        enemyHpSlider.value = Mathf.Clamp(
+            enemyHpDisplayValue,
+            0f,
+            enemyHpSlider.maxValue
+        );
+    }
 
     private void RestartBattleAtStage(int stage)
     {
@@ -740,7 +842,6 @@ private void RefreshEnemyHpSliderVisual()
 
                             nextStage = Mathf.Max(1, response.current_stage);
 
-                            GoldManager.Instance?.SetGold(response.gold);
                             CurrencyUIManager.Instance?.SetGold(response.gold);
                             CurrencyUIManager.Instance?.SetGem(response.gem);
 
@@ -779,7 +880,7 @@ private void RefreshEnemyHpSliderVisual()
 
                 if (!dbSaveSuccess)
                 {
-                    GoldManager.Instance?.AddGold(rewardGold);
+                    CurrencyUIManager.Instance?.AddGold(rewardGold);
                 }
 
                 coinSpawner?.SpawnCoins(enemyDeathPos);
@@ -792,6 +893,8 @@ private void RefreshEnemyHpSliderVisual()
 
                 currentStage = nextStage;
                 UpdateStageText(currentStage);
+                FinishStageChallenge();
+
 
                 yield return new WaitForSeconds(roundInterval);
             }
@@ -845,6 +948,7 @@ private void RefreshEnemyHpSliderVisual()
                     currentEnemy = null;
                 }
                 UpdateEnemyHpUI(true);
+                FinishStageChallenge();
 
                 yield return new WaitForSeconds(roundInterval);
             }

@@ -112,7 +112,6 @@ public class UserCurrencyApi : MonoBehaviour
 
             CurrencyUIManager.Instance?.SetGold(response.gold);
             CurrencyUIManager.Instance?.SetGem(response.gem);
-            GoldManager.Instance?.SetGold(response.gold);
         }
     }
 

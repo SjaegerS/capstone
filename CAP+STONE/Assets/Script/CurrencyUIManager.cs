@@ -21,8 +21,22 @@ public class CurrencyUIManager : MonoBehaviour
     private static CurrencyUIManager instance;
     public static CurrencyUIManager Instance => instance;
 
+    private long currentGold;
+    private long currentGem;
+
+    public long CurrentGold => currentGold;
+    public long CurrentGem => currentGem;
+
+    private bool isLoadingCurrency;
+
     private void Awake()
     {
+        if (instance != null && instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
         instance = this;
 
         if (battleRewardApi == null)
@@ -30,11 +44,23 @@ public class CurrencyUIManager : MonoBehaviour
 
         if (battleRewardApi == null)
             battleRewardApi = FindFirstObjectByType<BattleRewardApi>();
+
+        SetupText(goldText);
+        SetupText(gemText);
     }
 
     private void Start()
     {
         StartCoroutine(LoadCurrencyWhenUserReady());
+    }
+
+    private void SetupText(TextMeshProUGUI text)
+    {
+        if (text == null)
+            return;
+
+        text.textWrappingMode = TextWrappingModes.NoWrap;
+        text.overflowMode = TextOverflowModes.Overflow;
     }
 
     private IEnumerator LoadCurrencyWhenUserReady()
@@ -65,7 +91,6 @@ public class CurrencyUIManager : MonoBehaviour
 
     private long GetUserId()
     {
-        // 1. BattleRewardApi 기준으로 가져오기
         if (battleRewardApi != null)
         {
             int apiUserId = battleRewardApi.GetUserId();
@@ -77,13 +102,9 @@ public class CurrencyUIManager : MonoBehaviour
             }
         }
 
-        // 2. CurrentUser에서 가져오기
         if (CurrentUser.UserId > 0)
-        {
             return CurrentUser.UserId;
-        }
 
-        // 3. PlayerPrefs USER_ID에서 가져오기
         int savedUserId = PlayerPrefs.GetInt(USER_ID_KEY, -1);
 
         if (savedUserId > 0)
@@ -95,8 +116,19 @@ public class CurrencyUIManager : MonoBehaviour
         return -1;
     }
 
+    public void RefreshFromDb()
+    {
+        if (!gameObject.activeInHierarchy)
+            return;
+
+        StartCoroutine(LoadCurrencyFromDb());
+    }
+
     public IEnumerator LoadCurrencyFromDb()
     {
+        if (isLoadingCurrency)
+            yield break;
+
         long userId = GetUserId();
 
         if (userId <= 0)
@@ -105,6 +137,8 @@ public class CurrencyUIManager : MonoBehaviour
             yield break;
         }
 
+        isLoadingCurrency = true;
+
         string url = $"{baseUrl}/users/{userId}/currency/";
 
         Debug.Log($"[CurrencyUIManager] 재화 조회 API 호출: {url}");
@@ -112,6 +146,8 @@ public class CurrencyUIManager : MonoBehaviour
         using (UnityWebRequest request = UnityWebRequest.Get(url))
         {
             yield return request.SendWebRequest();
+
+            isLoadingCurrency = false;
 
             if (request.result != UnityWebRequest.Result.Success)
             {
@@ -141,33 +177,100 @@ public class CurrencyUIManager : MonoBehaviour
                 yield break;
             }
 
-            SetGold(response.gold);
-            SetGem(response.gem);
+            SetCurrency(response.gold, response.gem);
 
             Debug.Log($"[CurrencyUIManager] 재화 로드 완료. Gold={response.gold}, Gem={response.gem}");
         }
     }
 
+    public void SetCurrency(long gold, long gem)
+    {
+        currentGold = Math.Max(0L, gold);
+        currentGem = Math.Max(0L, gem);
+
+        RefreshGoldText();
+        RefreshGemText();
+    }
+
     public void SetGold(long amount)
     {
-        GoldManager.Instance?.SetGold(amount);
-
-        if (goldText == null)
-            return;
-
-        goldText.textWrappingMode = TextWrappingModes.NoWrap;
-        goldText.overflowMode = TextOverflowModes.Overflow;
-        goldText.text = Math.Max(0L, amount).ToString();
+        currentGold = Math.Max(0L, amount);
+        RefreshGoldText();
     }
 
     public void SetGem(long amount)
     {
+        currentGem = Math.Max(0L, amount);
+        RefreshGemText();
+    }
+
+    public void AddGold(long amount)
+    {
+        SetGold(currentGold + amount);
+    }
+
+    public void AddGem(long amount)
+    {
+        SetGem(currentGem + amount);
+    }
+
+    public bool CanSpendGold(long amount)
+    {
+        return amount >= 0 && currentGold >= amount;
+    }
+
+    public bool TrySpendGoldLocalOnly(long amount)
+    {
+        if (!CanSpendGold(amount))
+            return false;
+
+        SetGold(currentGold - amount);
+        return true;
+    }
+
+    private void RefreshGoldText()
+    {
+        if (goldText == null)
+            return;
+
+        SetupText(goldText);
+        goldText.text = FormatCurrency(currentGold);
+    }
+
+    private void RefreshGemText()
+    {
         if (gemText == null)
             return;
 
-        gemText.textWrappingMode = TextWrappingModes.NoWrap;
-        gemText.overflowMode = TextOverflowModes.Overflow;
-        gemText.text = Math.Max(0L, amount).ToString();
+        SetupText(gemText);
+        gemText.text = FormatCurrency(currentGem);
+    }
+
+    public static string FormatCurrency(long value)
+    {
+        value = Math.Max(0L, value);
+
+        if (value < 1000)
+            return value.ToString();
+
+        string[] units = { "", "a", "b", "c", "d", "e", "f", "g" };
+
+        double displayValue = value;
+        int unitIndex = 0;
+
+        while (displayValue >= 1000.0 && unitIndex < units.Length - 1)
+        {
+            displayValue /= 1000.0;
+            unitIndex++;
+        }
+
+        if (displayValue >= 100)
+            return displayValue.ToString("0") + units[unitIndex];
+
+        if (displayValue >= 10)
+            return displayValue.ToString("0.#") + units[unitIndex];
+
+        return displayValue.ToString("0.##") + units[unitIndex];
     }
 
     [Serializable]

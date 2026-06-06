@@ -240,8 +240,8 @@ public class GachaChestAnimation : MonoBehaviour
 
         CurrencyResponse response = JsonUtility.FromJson<CurrencyResponse>(request.downloadHandler.text);
 
-        if (response != null && CurrencyUIManager.Instance != null)
-            CurrencyUIManager.Instance.SetGem(response.gem);
+        if (response != null)
+            SetGemAmount(response.gem);
 
         yield return StartCoroutine(PlayRoutine(pullCount));
     }
@@ -468,13 +468,39 @@ public class GachaChestAnimation : MonoBehaviour
 
     private void SetGemAmount(long amount)
     {
-        if (gemText == null)
-            return;
+        if (gemText != null)
+        {
+            gemText.textWrappingMode = TextWrappingModes.NoWrap;
+            gemText.overflowMode = TextOverflowModes.Overflow;
+            gemText.alignment = TextAlignmentOptions.Center;
+            gemText.text = FormatCurrency(amount);
+        }
 
-        gemText.textWrappingMode = TextWrappingModes.NoWrap;
-        gemText.overflowMode = TextOverflowModes.Overflow;
-        gemText.alignment = TextAlignmentOptions.Center;
-        gemText.text = Math.Max(0L, amount).ToString();
+        if (CurrencyUIManager.Instance != null)
+            CurrencyUIManager.Instance.SetGem(amount);
+    }
+
+    private string FormatCurrency(long amount)
+    {
+        if (amount >= 100000000)
+        {
+            double value = amount / 100000000d;
+            return value % 1 == 0 ? $"{value:0}억" : $"{value:0.#}억";
+        }
+
+        if (amount >= 10000)
+        {
+            double value = amount / 10000d;
+            return value % 1 == 0 ? $"{value:0}만" : $"{value:0.#}만";
+        }
+
+        if (amount >= 1000)
+        {
+            double value = amount / 1000d;
+            return value % 1 == 0 ? $"{value:0}천" : $"{value:0.#}천";
+        }
+
+        return amount.ToString();
     }
 
     private int GetGemCost(int pullCount)
@@ -587,6 +613,8 @@ public class GachaChestAnimation : MonoBehaviour
             yield break;
         }
 
+        yield return StartCoroutine(LoadItemsIfNeeded());
+
         string url = $"{baseUrl}/users/{userId}/items/";
 
         UnityWebRequest request = UnityWebRequest.Get(url);
@@ -614,26 +642,35 @@ public class GachaChestAnimation : MonoBehaviour
             ItemDto item = FindCachedItemById(userItem.item_id);
 
             if (item == null)
+            {
+                Debug.LogWarning($"[Gacha] cached item을 찾지 못했습니다. item_id={userItem.item_id}");
                 continue;
+            }
 
             EquipmentRarity rarity = ToEquipmentRarity(item.grade);
             Sprite sprite = FindSpriteByItem(item, rarity);
 
             if (sprite == null)
+            {
+                Debug.LogWarning(
+                    $"[Gacha] sprite를 찾지 못했습니다. " +
+                    $"item_key={item.item_key}, image_key={item.image_key}, grade={item.grade}, item_type={item.item_type}"
+                );
                 continue;
+            }
 
             EquipmentInventory.ApplyServerUserItem(
                 sprite,
                 (int)userItem.user_item_id,
                 (int)userItem.item_id,
+                item.item_key,
+                item.image_key,
+                item.item_name,
+                item.item_type,
+                item.grade,
                 userItem.quantity,
-                userItem.enhance_level
-            );
-
-            EquipmentInventoryRecord record = EquipmentInventory.GetRecord(sprite);
-            record.SetMetadata(
-                GetInventoryCategoryFromItemType(item.item_type, sprite),
-                ToInventoryRarity(rarity)
+                userItem.enhance_level,
+                userItem.is_equipped
             );
         }
 

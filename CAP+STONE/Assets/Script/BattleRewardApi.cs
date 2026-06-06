@@ -264,6 +264,31 @@ public class BattleRewardApi : MonoBehaviour
             onSuccess?.Invoke(response);
         }
     }
+
+    public IEnumerator SaveBattleRewardByStage(
+        int userId,
+        int stageId,
+        int killCountAdd,
+        bool isClear,
+        Action<BattleRewardResponse> onSuccess,
+        Action<string> onError = null
+    )
+    {
+        int rewardGold = GameBalance.RewardGold(stageId);
+        int rewardExp = GameBalance.RewardExp(stageId);
+
+        yield return SaveBattleReward(
+            userId,
+            stageId,
+            rewardGold,
+            rewardExp,
+            killCountAdd,
+            isClear,
+            onSuccess,
+            onError
+        );
+    }
+
     public IEnumerator AddGoldToUser(
         int userId,
         int amount,

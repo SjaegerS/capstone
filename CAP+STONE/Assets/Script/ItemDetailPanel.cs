@@ -6,7 +6,6 @@ public class ItemDetailPanel : MonoBehaviour
 {
     [Header("Item Visual")]
     [SerializeField] private Image itemIconImage;
-    [SerializeField] private Transform itemPrefabParent;
 
     [Header("Item Detail UI")]
     [SerializeField] private TextMeshProUGUI gradeText;
@@ -14,6 +13,7 @@ public class ItemDetailPanel : MonoBehaviour
     [SerializeField] private TextMeshProUGUI levelText;
     [SerializeField] private TextMeshProUGUI progressText;
     [SerializeField] private TextMeshProUGUI mainEffectText;
+    [SerializeField] private TextMeshProUGUI subEffectText;
 
     [Header("Progress Slider")]
     [SerializeField] private Slider progressSlider;
@@ -24,6 +24,7 @@ public class ItemDetailPanel : MonoBehaviour
     [Header("Equip")]
     [SerializeField] private Button equipButton;
     [SerializeField] private TextMeshProUGUI equipButtonText;
+    [SerializeField] private CanvasGroup equipButtonCanvasGroup;
 
     [Header("Enhance")]
     [SerializeField] private Button enhanceButton;
@@ -35,21 +36,32 @@ public class ItemDetailPanel : MonoBehaviour
     [SerializeField] private Button outsideCloseButton;
 
     private EquipmentInventoryRecord currentRecord;
-    private GameObject spawnedItemPrefab;
 
     private void Awake()
     {
-        if (closeButton != null)
+         if (closeButton != null)
+        {
+            closeButton.onClick.RemoveAllListeners();
             closeButton.onClick.AddListener(Close);
+        }
 
         if (outsideCloseButton != null)
+        {
+            outsideCloseButton.onClick.RemoveAllListeners();
             outsideCloseButton.onClick.AddListener(Close);
+        }
 
         if (equipButton != null)
+        {
+            equipButton.onClick.RemoveAllListeners();
             equipButton.onClick.AddListener(OnClickEquip);
+        }
 
         if (enhanceButton != null)
+        {
+            enhanceButton.onClick.RemoveAllListeners();
             enhanceButton.onClick.AddListener(OnClickEnhance);
+        }
 
         gameObject.SetActive(false);
     }
@@ -63,6 +75,9 @@ public class ItemDetailPanel : MonoBehaviour
             Debug.LogError("ItemDetailPanel.Open()에 record가 null로 들어왔습니다.");
             return;
         }
+
+        gameObject.SetActive(true);
+        transform.SetAsLastSibling();
 
         Debug.Log(
             "[ItemDetail Open] " +
@@ -82,12 +97,10 @@ public class ItemDetailPanel : MonoBehaviour
         );
 
         RefreshUI();
-        gameObject.SetActive(true);
     }
 
     public void Close()
     {
-        ClearSpawnedPrefab();
         gameObject.SetActive(false);
     }
 
@@ -102,9 +115,11 @@ public class ItemDetailPanel : MonoBehaviour
             gradeText.text = FormatGrade(currentRecord.ItemGrade);
 
         if (itemNameText != null)
+        {
             itemNameText.text = string.IsNullOrEmpty(currentRecord.ItemName)
                 ? currentRecord.ItemKey
                 : currentRecord.ItemName;
+        }
 
         if (levelText != null)
             levelText.text = "Lv." + currentRecord.Level;
@@ -113,144 +128,235 @@ public class ItemDetailPanel : MonoBehaviour
             progressText.text = currentRecord.TotalCount + "/" + currentRecord.RequiredCount;
 
         RefreshProgressSlider();
-
-        if (mainEffectText != null)
-            mainEffectText.text = GetMainEffectText();
-
-        if (equipButtonText != null)
-            equipButtonText.text = currentRecord.IsEquipped ? "장착중" : "장착";
-
-        if (equipButton != null)
-            equipButton.interactable = currentRecord.IsOwned && !currentRecord.IsEquipped;
-
-        if (enhanceButtonText != null)
-            enhanceButtonText.text = currentRecord.CanUpgrade ? "강화" : "강화불가";
-
-        if (enhanceButton != null)
-            enhanceButton.interactable = currentRecord.CanUpgrade;
+        RefreshEffectTexts();
+        RefreshEquipButtonState();
+        RefreshEnhanceButtonState();
 
         if (enhanceGoldText != null)
-            enhanceGoldText.text = currentRecord.EnhanceGoldCost.ToString();
+            enhanceGoldText.text = GameBalance.EquipmentEnhanceGoldCost(currentRecord.Level).ToString();
     }
 
     private void RefreshProgressSlider()
     {
+        if (currentRecord == null)
+            return;
+
+        float progress = 0f;
+
+        if (currentRecord.RequiredCount > 0)
+        {
+            progress = Mathf.Clamp01(
+                (float)currentRecord.TotalCount / currentRecord.RequiredCount
+            );
+        }
+
         if (progressSlider != null)
         {
             progressSlider.minValue = 0f;
             progressSlider.maxValue = 1f;
+            progressSlider.value = progress;
             progressSlider.interactable = false;
-
-            if (currentRecord.RequiredCount > 0)
-            {
-                progressSlider.value = Mathf.Clamp01(
-                    (float)currentRecord.TotalCount / currentRecord.RequiredCount
-                );
-            }
-            else
-            {
-                progressSlider.value = 0f;
-            }
         }
+        else
+        {
+            Debug.LogWarning("[ItemDetailPanel] progressSlider가 연결되지 않았습니다.");
+        }
+
+        Color targetColor = currentRecord.CanUpgrade
+            ? upgradePossibleColor
+            : upgradeImpossibleColor;
 
         Image fillImage = progressFillImage;
 
         if (fillImage == null && progressSlider != null && progressSlider.fillRect != null)
+        {
             fillImage = progressSlider.fillRect.GetComponent<Image>();
+        }
+
+        if (fillImage == null && progressSlider != null)
+        {
+            Image[] images = progressSlider.GetComponentsInChildren<Image>(true);
+
+            foreach (Image image in images)
+            {
+                if (image == null)
+                    continue;
+
+                string lowerName = image.name.ToLowerInvariant();
+
+                if (lowerName.Contains("fill"))
+                {
+                    fillImage = image;
+                    break;
+                }
+            }
+        }
 
         if (fillImage != null)
         {
-            fillImage.color = currentRecord.CanUpgrade
-                ? upgradePossibleColor
-                : upgradeImpossibleColor;
+            fillImage.color = targetColor;
+            progressFillImage = fillImage;
         }
+        else
+        {
+            Debug.LogWarning("[ItemDetailPanel] Progress Slider Fill 이미지를 찾지 못했습니다.");
+        }
+
+        Debug.Log(
+            "[ItemDetailPanel] 팝업 슬라이더 갱신 | " +
+            $"quantity={currentRecord.TotalCount}, " +
+            $"required={currentRecord.RequiredCount}, " +
+            $"progress={progress}, " +
+            $"canUpgrade={currentRecord.CanUpgrade}"
+        );
     }
 
     private void LoadItemVisual()
     {
-        ClearSpawnedPrefab();
+        if (itemIconImage == null)
+            return;
+
+        itemIconImage.sprite = null;
+        itemIconImage.color = new Color(1f, 1f, 1f, 0f);
 
         string itemKey = currentRecord.ItemKey;
         string imageKey = string.IsNullOrEmpty(currentRecord.ImageKey)
             ? currentRecord.ItemKey
             : currentRecord.ImageKey;
 
-        // 1순위: 프리팹 로딩
-        // 실제 파일 위치 예:
-        // Assets/Resources/GachaRare/Rare/rare_sword.prefab
-        if (itemPrefabParent != null && !string.IsNullOrEmpty(itemKey))
+        string gradeFolder = GetGradeFolder(currentRecord.ItemGrade);
+
+        Sprite sprite = null;
+
+        if (!string.IsNullOrEmpty(imageKey))
         {
-            string gradeFolder = GetGradeFolder(currentRecord.ItemGrade);
-            string prefabPath = $"GachaRare/{gradeFolder}/{itemKey}";
+            string imageKeyPath = $"GachaRare/{gradeFolder}/{imageKey}";
+            sprite = Resources.Load<Sprite>(imageKeyPath);
 
-            GameObject prefab = Resources.Load<GameObject>(prefabPath);
-
-            if (prefab != null)
-            {
-                spawnedItemPrefab = Instantiate(prefab, itemPrefabParent);
-                spawnedItemPrefab.transform.localPosition = Vector3.zero;
-                spawnedItemPrefab.transform.localRotation = Quaternion.identity;
-                spawnedItemPrefab.transform.localScale = Vector3.one;
-                return;
-            }
-
-            Debug.LogWarning("아이템 프리팹을 찾지 못했습니다: Resources/" + prefabPath);
+            Debug.Log(
+                $"[ItemDetailPanel] 스프라이트 로드 imageKey path={imageKeyPath}, " +
+                $"result={(sprite != null ? sprite.name : "null")}"
+            );
         }
 
-        // 2순위: 이미지 로딩
-        // 실제 파일 위치 예:
-        // Assets/Resources/ItemImages/rare_sword.png
-        if (itemIconImage != null && !string.IsNullOrEmpty(imageKey))
+        if (sprite == null && !string.IsNullOrEmpty(itemKey) && itemKey != imageKey)
         {
-            string imagePath = "ItemImages/" + imageKey;
-            Sprite sprite = Resources.Load<Sprite>(imagePath);
+            string itemKeyPath = $"GachaRare/{gradeFolder}/{itemKey}";
+            sprite = Resources.Load<Sprite>(itemKeyPath);
 
-            if (sprite != null)
-            {
-                itemIconImage.sprite = sprite;
-                itemIconImage.preserveAspect = true;
-                itemIconImage.color = Color.white;
-            }
-            else
-            {
-                Debug.LogWarning("아이템 이미지를 찾지 못했습니다: Resources/" + imagePath);
-            }
+            Debug.Log(
+                $"[ItemDetailPanel] 스프라이트 로드 itemKey path={itemKeyPath}, " +
+                $"result={(sprite != null ? sprite.name : "null")}"
+            );
         }
+
+        if (sprite == null)
+        {
+            Debug.LogWarning(
+                "아이템 스프라이트를 찾지 못했습니다. " +
+                $"grade={currentRecord.ItemGrade}, " +
+                $"folder={gradeFolder}, " +
+                $"itemKey={itemKey}, imageKey={imageKey}"
+            );
+            return;
+        }
+
+        itemIconImage.sprite = sprite;
+        itemIconImage.preserveAspect = true;
+        itemIconImage.color = Color.white;
     }
 
-    private void ClearSpawnedPrefab()
+    private void RefreshEffectTexts()
     {
-        if (spawnedItemPrefab != null)
+        string mainText = GetMainEffectText();
+        string subText = GetSubEffectText();
+
+        if (mainEffectText != null)
+            mainEffectText.text = mainText;
+
+        if (subEffectText != null)
         {
-            Destroy(spawnedItemPrefab);
-            spawnedItemPrefab = null;
+            subEffectText.text = subText;
         }
-
-        if (itemPrefabParent == null)
-            return;
-
-        for (int i = itemPrefabParent.childCount - 1; i >= 0; i--)
+        else if (mainEffectText != null)
         {
-            Destroy(itemPrefabParent.GetChild(i).gameObject);
+            mainEffectText.text = mainText + "\n" + subText;
         }
     }
 
     private string GetMainEffectText()
     {
-        string itemType = (currentRecord.ItemType ?? "").ToUpperInvariant();
+        if (currentRecord == null)
+            return "";
+
+        string itemType = NormalizeItemType(currentRecord.ItemType);
+
+        int mainEffect = GameBalance.EquipmentMainEffect(
+            currentRecord.ItemGrade,
+            currentRecord.Level
+        );
 
         if (itemType == "WEAPON")
-            return "+공격력 " + currentRecord.FinalAttack;
+            return "기본 공격력 +" + mainEffect;
 
         if (itemType == "ARMOR")
-            return "+방어력 " + currentRecord.FinalDefense;
+            return "기본 방어력 +" + mainEffect;
 
-        return "+효과 없음";
+        return "기본 효과 +" + mainEffect;
+    }
+
+    private string GetSubEffectText()
+    {
+        if (currentRecord == null)
+            return "";
+
+        string itemType = NormalizeItemType(currentRecord.ItemType);
+
+        float subEffectRate = GameBalance.EquipmentSubEffectRate(
+            currentRecord.ItemGrade,
+            currentRecord.Level
+        );
+
+        float percent = subEffectRate * 100f;
+
+        if (itemType == "WEAPON")
+            return $"최종 공격력 +{percent:0.##}%";
+
+        if (itemType == "ARMOR")
+            return $"최종 방어력 +{percent:0.##}%";
+
+        return $"최종 효과 +{percent:0.##}%";
+    }
+
+    private void RefreshEquipButtonState()
+    {
+        bool isEquipped = currentRecord != null && currentRecord.IsEquipped;
+        bool canEquip = currentRecord != null && currentRecord.IsOwned && !isEquipped;
+
+        if (equipButtonText != null)
+            equipButtonText.text = isEquipped ? "장착중" : "장착";
+
+        if (equipButton != null)
+            equipButton.interactable = canEquip;
+
+        if (equipButtonCanvasGroup != null)
+            equipButtonCanvasGroup.alpha = canEquip ? 1f : 0.45f;
+    }
+
+    private void RefreshEnhanceButtonState()
+    {
+        bool canEnhance = currentRecord != null && currentRecord.CanUpgrade;
+
+        if (enhanceButtonText != null)
+            enhanceButtonText.text = canEnhance ? "강화" : "강화불가";
+
+        if (enhanceButton != null)
+            enhanceButton.interactable = canEnhance;
     }
 
     private string FormatGrade(string grade)
     {
-        string normalized = (grade ?? "").ToUpperInvariant();
+        string normalized = NormalizeGrade(grade);
 
         switch (normalized)
         {
@@ -271,7 +377,7 @@ public class ItemDetailPanel : MonoBehaviour
 
     private string GetGradeFolder(string grade)
     {
-        string normalized = (grade ?? "").ToUpperInvariant();
+        string normalized = NormalizeGrade(grade);
 
         switch (normalized)
         {
@@ -301,6 +407,8 @@ public class ItemDetailPanel : MonoBehaviour
             return;
         }
 
+        Debug.Log($"[ItemDetailPanel] 장착 버튼 클릭. EquipItem 호출. userItemId={currentRecord.UserItemId}");
+
         SetButtonsInteractable(false);
 
         EquipmentApi.Instance.EquipItem(
@@ -312,8 +420,11 @@ public class ItemDetailPanel : MonoBehaviour
                 if (!success)
                     return;
 
-                Close();
+                EquipmentInventory.EquipOnlyThis(currentRecord);
+
+                RefreshUI();
                 EquipmentInventoryView.RefreshAll();
+                RefreshBattlePlayerStats();
             }
         );
     }
@@ -341,6 +452,8 @@ public class ItemDetailPanel : MonoBehaviour
             return;
         }
 
+        Debug.Log($"[ItemDetailPanel] 강화 버튼 클릭. EnhanceItem 호출. userItemId={currentRecord.UserItemId}");
+
         SetButtonsInteractable(false);
 
         EquipmentApi.Instance.EnhanceItem(
@@ -352,10 +465,59 @@ public class ItemDetailPanel : MonoBehaviour
                 if (!success)
                     return;
 
-                Close();
+                bool localUpdated = currentRecord.TryUpgradeLocalOnly();
+
+                if (localUpdated)
+                {
+                    EquipmentInventory.SaveRecordToPrefs(currentRecord);
+                }
+
+                Debug.Log(
+                    "[ItemDetailPanel] 강화 성공 후 로컬 갱신 " +
+                    $"result={localUpdated}, " +
+                    $"level={currentRecord.Level}, " +
+                    $"quantity={currentRecord.TotalCount}, " +
+                    $"required={currentRecord.RequiredCount}, " +
+                    $"goldCost={currentRecord.EnhanceGoldCost}"
+                );
+
                 EquipmentInventoryView.RefreshAll();
+                RefreshUI();
+                RefreshBattlePlayerStats();
             }
         );
+    }
+
+    private void RefreshBattlePlayerStats()
+    {
+        BattleManager battleManager = FindFirstObjectByType<BattleManager>();
+
+        if (battleManager != null)
+            battleManager.RefreshPlayerStats();
+    }
+
+    private static string NormalizeItemType(string itemType)
+    {
+        if (string.IsNullOrWhiteSpace(itemType))
+            return string.Empty;
+
+        return itemType
+            .Trim()
+            .ToUpperInvariant()
+            .Replace("-", "_")
+            .Replace(" ", "_");
+    }
+
+    private static string NormalizeGrade(string grade)
+    {
+        if (string.IsNullOrWhiteSpace(grade))
+            return "NORMAL";
+
+        return grade
+            .Trim()
+            .ToUpperInvariant()
+            .Replace("-", "_")
+            .Replace(" ", "_");
     }
 
     private void SetButtonsInteractable(bool value)

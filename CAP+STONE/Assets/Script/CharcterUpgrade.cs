@@ -25,8 +25,7 @@ public class CharcterUpgrade : MonoBehaviour
     [SerializeField] private TextMeshProUGUI defenseUpgradeLvlText;
     [SerializeField] private TextMeshProUGUI defenseUpgradeCostText;
 
-    [Header("Common UI")]
-    [SerializeField] private TextMeshProUGUI goldText;
+    [Header("Message")]
     [SerializeField] private TextMeshProUGUI messageText;
 
     [Header("Battle")]
@@ -170,7 +169,8 @@ public class CharcterUpgrade : MonoBehaviour
                     $"DEF_Lv={response.defense_upgrade_lvl}, " +
                     $"HP={response.max_hp}, " +
                     $"ATK={response.attack_power}, " +
-                    $"DEF={response.defense_power}"
+                    $"DEF={response.defense_power}, " +
+                    $"Gold={response.gold}"
                 );
 
                 ApplyUpgradeResponseToUI(response);
@@ -235,9 +235,6 @@ public class CharcterUpgrade : MonoBehaviour
                 status.defense_upgrade_lvl
             );
         }
-
-        GoldManager.Instance?.SetGold(status.gold);
-        CurrencyUIManager.Instance?.SetGold(status.gold);
     }
 
     private void ApplyUpgradeResponseToUI(CharacterUpgradeApi.CharacterUpgradeResponse response)
@@ -252,10 +249,6 @@ public class CharcterUpgrade : MonoBehaviour
 
         RefreshAllTexts();
 
-        if (goldText != null)
-            goldText.text = $"Gold: {response.gold}";
-
-        GoldManager.Instance?.SetGold(response.gold);
         CurrencyUIManager.Instance?.SetGold(response.gold);
 
         if (battleManager == null)
@@ -295,13 +288,13 @@ public class CharcterUpgrade : MonoBehaviour
             defenseUpgradeLvlText.text = $"Lv.{defenseUpgradeLvl}";
 
         if (hpUpgradeCostText != null)
-            hpUpgradeCostText.text = $"{CalculateClientPreviewCost(hpUpgradeLvl)} Gold";
+            hpUpgradeCostText.text = CurrencyUIManager.FormatCurrency(CalculateClientPreviewCost(hpUpgradeLvl));
 
         if (attackUpgradeCostText != null)
-            attackUpgradeCostText.text = $"{CalculateClientPreviewCost(attackUpgradeLvl)} Gold";
+            attackUpgradeCostText.text = CurrencyUIManager.FormatCurrency(CalculateClientPreviewCost(attackUpgradeLvl));
 
         if (defenseUpgradeCostText != null)
-            defenseUpgradeCostText.text = $"{CalculateClientPreviewCost(defenseUpgradeLvl)} Gold";
+            defenseUpgradeCostText.text = CurrencyUIManager.FormatCurrency(CalculateClientPreviewCost(defenseUpgradeLvl));
     }
 
     private int CalculateClientPreviewCost(int upgradeLvl)

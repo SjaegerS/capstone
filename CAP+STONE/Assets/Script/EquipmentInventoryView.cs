@@ -1,13 +1,46 @@
+using System.Collections;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
 public static class EquipmentInventoryView
 {
+    private static ItemDetailPanel cachedDetailPanel;
+    private static EquipmentInventoryViewRunner runner;
+    private static bool isRefreshing;
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    private static void RuntimeInitialize()
+    {
+        cachedDetailPanel = null;
+        EnsureRunner();
+    }
+
     public static void RefreshAll()
     {
+        if (isRefreshing)
+            return;
+
+        isRefreshing = true;
+
+        EnsureRunner();
+        cachedDetailPanel = FindItemDetailPanel();
+
         RefreshContent("WeaponContent", "WEAPON");
         RefreshContent("ArmorContent", "ARMOR");
+
+        isRefreshing = false;
+    }
+
+    private static void EnsureRunner()
+    {
+        if (runner != null)
+            return;
+
+        GameObject runnerObject = new GameObject("EquipmentInventoryViewRunner");
+        Object.DontDestroyOnLoad(runnerObject);
+
+        runner = runnerObject.AddComponent<EquipmentInventoryViewRunner>();
     }
 
     private static void RefreshContent(string contentName, string itemType)
@@ -57,59 +90,44 @@ public static class EquipmentInventoryView
     private static void ClearSpacer(Transform slot)
     {
         if (slot == null)
-        {
             return;
-        }
 
         EquipmentSlotUpgradeButton upgradeButton = slot.GetComponent<EquipmentSlotUpgradeButton>();
         if (upgradeButton != null)
-        {
             Object.Destroy(upgradeButton);
-        }
 
         Button button = slot.GetComponent<Button>();
         if (button != null)
-        {
             Object.Destroy(button);
-        }
 
         Transform levelText = slot.Find("LVText");
         if (levelText != null)
-        {
             levelText.gameObject.SetActive(false);
-        }
 
         Transform progressSlider = slot.Find("EquipmentProgressSlider");
         if (progressSlider != null)
-        {
             progressSlider.gameObject.SetActive(false);
-        }
     }
 
     private static void ApplySlot(Transform slot, Sprite sprite, string itemType)
     {
         if (slot == null || sprite == null)
-        {
             return;
-        }
 
         slot.gameObject.SetActive(true);
 
-        EquipmentInventoryRecord record = EquipmentInventory.GetRecord(sprite);
-
-        // 기존 "클릭하면 바로 강화" 컴포넌트 제거
         EquipmentSlotUpgradeButton upgradeButton = slot.GetComponent<EquipmentSlotUpgradeButton>();
         if (upgradeButton != null)
-        {
             Object.Destroy(upgradeButton);
-        }
 
-        // 슬롯 클릭 시 상세창 열기
-        ConfigureSlotButton(slot, record);
+        ConfigureSlotButton(slot, sprite);
+
+        EquipmentInventoryRecord record = EquipmentInventory.GetRecord(sprite);
 
         Image icon = FindIconImage(slot);
         if (icon != null)
         {
+            icon.sprite = sprite;
             icon.preserveAspect = true;
             icon.color = record.IsOwned ? Color.white : new Color(0.16f, 0.16f, 0.16f, 0.75f);
             icon.raycastTarget = false;
@@ -118,6 +136,8 @@ public static class EquipmentInventoryView
         TextMeshProUGUI levelText = GetOrCreateLevelText(slot);
         if (levelText != null)
         {
+            levelText.gameObject.SetActive(true);
+            levelText.raycastTarget = false;
             levelText.text = record.IsOwned ? "LV." + record.Level : "LV.-";
         }
 
@@ -147,23 +167,51 @@ public static class EquipmentInventoryView
         }
     }
 
-    private static void ConfigureSlotButton(
-        Transform slot,
-        EquipmentInventoryRecord record
-    )
+    private static void ConfigureSlotButton(Transform slot, Sprite sprite)
     {
-        Button button = slot.GetComponent<Button>();
-        if (button == null)
+        if (slot == null)
+            return;
+
+        Image rootImage = slot.GetComponent<Image>();
+
+        if (rootImage == null)
         {
-            button = slot.gameObject.AddComponent<Button>();
+            rootImage = slot.gameObject.AddComponent<Image>();
+            rootImage.color = new Color(1f, 1f, 1f, 0f);
         }
 
+        rootImage.raycastTarget = true;
+
+        Button button = slot.GetComponent<Button>();
+        if (button == null)
+            button = slot.gameObject.AddComponent<Button>();
+
         button.transition = Selectable.Transition.None;
+        button.targetGraphic = rootImage;
         button.onClick.RemoveAllListeners();
 
         button.onClick.AddListener(() =>
         {
-            if (record == null || !record.IsOwned)
+            if (sprite == null)
+            {
+                Debug.Log("슬롯 스프라이트가 없습니다.");
+                return;
+            }
+
+            EquipmentInventoryRecord latestRecord = EquipmentInventory.GetRecord(sprite);
+
+            Debug.Log(
+                "[EquipmentInventoryView] 슬롯 클릭 " +
+                $"sprite={sprite.name}, " +
+                $"owned={latestRecord.IsOwned}, " +
+                $"userItemId={latestRecord.UserItemId}, " +
+                $"level={latestRecord.Level}, " +
+                $"quantity={latestRecord.TotalCount}, " +
+                $"required={latestRecord.RequiredCount}, " +
+                $"grade={latestRecord.ItemGrade}"
+            );
+
+            if (latestRecord == null || !latestRecord.IsOwned)
             {
                 Debug.Log("보유하지 않은 장비입니다.");
                 return;
@@ -176,29 +224,39 @@ public static class EquipmentInventoryView
                 return;
             }
 
-            detailPanel.Open(record);
+            detailPanel.Open(latestRecord);
         });
     }
 
     private static ItemDetailPanel FindItemDetailPanel()
     {
+        if (
+            cachedDetailPanel != null &&
+            cachedDetailPanel.gameObject != null &&
+            cachedDetailPanel.gameObject.scene.IsValid() &&
+            cachedDetailPanel.gameObject.scene.isLoaded
+        )
+        {
+            return cachedDetailPanel;
+        }
+
+        cachedDetailPanel = null;
+
         ItemDetailPanel[] panels = Resources.FindObjectsOfTypeAll<ItemDetailPanel>();
 
         foreach (ItemDetailPanel panel in panels)
         {
             if (panel == null)
-            {
                 continue;
-            }
 
             if (!panel.gameObject.scene.IsValid() || !panel.gameObject.scene.isLoaded)
-            {
                 continue;
-            }
 
-            return panel;
+            cachedDetailPanel = panel;
+            return cachedDetailPanel;
         }
 
+        Debug.LogError("ItemDetailPanel을 찾지 못했습니다.");
         return null;
     }
 
@@ -206,15 +264,11 @@ public static class EquipmentInventoryView
     {
         EquipmentSlotUpgradeButton upgradeButton = slot.GetComponent<EquipmentSlotUpgradeButton>();
         if (upgradeButton != null)
-        {
             Object.Destroy(upgradeButton);
-        }
 
         Button button = slot.GetComponent<Button>();
         if (button != null)
-        {
             button.onClick.RemoveAllListeners();
-        }
 
         Image icon = FindIconImage(slot);
         if (icon != null)
@@ -226,7 +280,9 @@ public static class EquipmentInventoryView
         TextMeshProUGUI levelText = GetOrCreateLevelText(slot);
         if (levelText != null)
         {
+            levelText.gameObject.SetActive(true);
             levelText.text = "LV.-";
+            levelText.raycastTarget = false;
         }
 
         Slider slider = GetOrCreateSlider(slot);
@@ -250,20 +306,23 @@ public static class EquipmentInventoryView
     private static Image FindIconImage(Transform slot)
     {
         Image[] images = slot.GetComponentsInChildren<Image>(true);
+
         foreach (Image image in images)
         {
+            if (image == null)
+                continue;
+
             if (image.name.Contains("Character"))
-            {
                 return image;
-            }
         }
 
         foreach (Image image in images)
         {
+            if (image == null)
+                continue;
+
             if (image.transform != slot)
-            {
                 return image;
-            }
         }
 
         return null;
@@ -272,9 +331,7 @@ public static class EquipmentInventoryView
     private static void SetSliderFillColor(Slider slider, Color color)
     {
         if (slider == null)
-        {
             return;
-        }
 
         if (slider.fillRect != null)
         {
@@ -286,17 +343,32 @@ public static class EquipmentInventoryView
             }
         }
 
-        if (slider.targetGraphic is Image targetImage)
+        Image[] images = slider.GetComponentsInChildren<Image>(true);
+        foreach (Image image in images)
         {
-            targetImage.color = color;
+            if (image == null)
+                continue;
+
+            if (image.name.ToLowerInvariant().Contains("fill"))
+            {
+                image.color = color;
+                return;
+            }
         }
+
+        if (slider.targetGraphic is Image targetImage)
+            targetImage.color = color;
     }
 
     private static TextMeshProUGUI GetOrCreateLevelText(Transform slot)
     {
         TextMeshProUGUI[] texts = slot.GetComponentsInChildren<TextMeshProUGUI>(true);
+
         foreach (TextMeshProUGUI text in texts)
         {
+            if (text == null)
+                continue;
+
             if (text.name.Contains("LV") || text.text.Contains("LV"))
             {
                 text.raycastTarget = false;
@@ -367,7 +439,8 @@ public static class EquipmentInventoryView
             Image[] images = slider.GetComponentsInChildren<Image>(true);
             foreach (Image image in images)
             {
-                image.raycastTarget = false;
+                if (image != null)
+                    image.raycastTarget = false;
             }
 
             return slider;
@@ -438,17 +511,28 @@ public static class EquipmentInventoryView
 
         foreach (Transform transform in transforms)
         {
-            if (transform == null || !transform.gameObject.scene.IsValid() || !transform.gameObject.scene.isLoaded)
-            {
+            if (transform == null)
                 continue;
-            }
+
+            if (!transform.gameObject.scene.IsValid() || !transform.gameObject.scene.isLoaded)
+                continue;
 
             if (transform.name.Trim() == objectName)
-            {
                 return transform;
-            }
         }
 
         return null;
+    }
+}
+
+public class EquipmentInventoryViewRunner : MonoBehaviour
+{
+    private IEnumerator Start()
+    {
+        yield return null;
+        EquipmentInventoryView.RefreshAll();
+
+        yield return new WaitForSeconds(0.1f);
+        EquipmentInventoryView.RefreshAll();
     }
 }
