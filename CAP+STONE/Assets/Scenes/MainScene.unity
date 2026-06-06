@@ -4939,7 +4939,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cb11132550d9fd14587a3d693d525beb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AIManager
-  apiKey: AIzaSyC0wBSasWID4TDk1oTZWjdTzbLikAs6g8k
+  apiKey: 
 --- !u!4 &574537100
 Transform:
   m_ObjectHideFlags: 0
