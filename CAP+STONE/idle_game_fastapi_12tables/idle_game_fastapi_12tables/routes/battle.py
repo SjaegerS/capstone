@@ -38,6 +38,41 @@ def get_user_battle_status(
     return user_status
 
 
+@router.post("/challenge-stage/{user_id}")
+def challenge_stage(
+    user_id: int,
+    db: Session = Depends(get_db),
+):
+    user_status = (
+        db.query(models.UserStatus)
+        .filter(models.UserStatus.user_id == user_id)
+        .first()
+    )
+
+    if user_status is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="유저 상태 정보를 찾을 수 없습니다.",
+        )
+
+    if user_status.current_stage is None:
+        user_status.current_stage = 1
+
+    if user_status.current_stage <= 0:
+        user_status.current_stage = 1
+
+    db.commit()
+    db.refresh(user_status)
+
+    return {
+        "success": True,
+        "user_id": user_id,
+        "current_stage": user_status.current_stage,
+        "max_cleared_stage": max(user_status.current_stage - 1, 0),
+        "message": f"{user_status.current_stage} 스테이지에 도전합니다.",
+    }
+
+
 @router.post("/reward")
 def save_battle_reward(
     request: schemas.BattleRewardRequest,
