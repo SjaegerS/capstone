@@ -60,20 +60,78 @@ def calculate_required_exp(level: int) -> int:
     return int(1000 * (1.16 ** (level - 1)))
 
 
+EQUIPMENT_ENHANCE_LEVEL_MIN = 1
+EQUIPMENT_ENHANCE_GOLD_BASE = 500
+EQUIPMENT_ENHANCE_GOLD_RATE = 1.18
+
+EQUIPMENT_REQUIRED_ITEM_BASE = 2
+
+
 def calculate_enhance_gold(enhance_level: int) -> int:
-    return int(500 * (1.18 ** enhance_level))
+    """
+    장비 강화 골드 비용.
+
+    장비 레벨은 1부터 시작.
+    Lv.1 -> Lv.2 비용: 500 × 1.18^0 = 500
+    Lv.2 -> Lv.3 비용: 500 × 1.18^1 = 590
+    """
+    safe_level = max(EQUIPMENT_ENHANCE_LEVEL_MIN, enhance_level)
+    n = safe_level - 1
+
+    return int(round(EQUIPMENT_ENHANCE_GOLD_BASE * (EQUIPMENT_ENHANCE_GOLD_RATE ** n)))
 
 
 def calculate_required_item_count(enhance_level: int) -> int:
-    return (enhance_level // 2) + 1
+    """
+    장비 강화 필요 같은 장비 수.
+
+    장비 레벨은 1부터 시작.
+    Lv.1 -> Lv.2: 2개
+    Lv.2 -> Lv.3: 3개
+    Lv.3 -> Lv.4: 4개
+    """
+    safe_level = max(EQUIPMENT_ENHANCE_LEVEL_MIN, enhance_level)
+    n = safe_level - 1
+
+    return EQUIPMENT_REQUIRED_ITEM_BASE + n
+
+
+def calculate_equipment_main_effect(base_value: int, enhance_level: int) -> int:
+    """
+    장비 main effect.
+
+    공식:
+    기본 수치 × 1.15^n
+
+    Lv.1이면 n = 0
+    """
+    safe_level = max(EQUIPMENT_ENHANCE_LEVEL_MIN, enhance_level)
+    n = safe_level - 1
+
+    return int(round(base_value * (1.15 ** n)))
+
+
+def calculate_equipment_sub_effect(base_rate: float, enhance_level: int) -> float:
+    """
+    장비 sub effect.
+
+    공식:
+    기본 퍼센트 × 1.05^n
+
+    Lv.1이면 n = 0
+    """
+    safe_level = max(EQUIPMENT_ENHANCE_LEVEL_MIN, enhance_level)
+    n = safe_level - 1
+
+    return base_rate * (1.05 ** n)
 
 
 def calculate_equipment_attack(base_attack: int, enhance_level: int) -> int:
-    return base_attack + int(base_attack * 0.1 * enhance_level)
+    return calculate_equipment_main_effect(base_attack, enhance_level)
 
 
 def calculate_equipment_defense(base_defense: int, enhance_level: int) -> int:
-    return base_defense + int(base_defense * 0.1 * enhance_level)
+    return calculate_equipment_main_effect(base_defense, enhance_level)
 
 
 PLAYER_BASE_HP = 100
@@ -709,18 +767,37 @@ def create_user_item(
         "아이템을 찾을 수 없습니다.",
     )
 
-    existing_user_item = db.query(models.UserItem).filter(
-        models.UserItem.user_id == user_item_data.user_id,
-        models.UserItem.item_id == user_item_data.item_id,
-    ).first()
+    safe_enhance_level = max(
+        EQUIPMENT_ENHANCE_LEVEL_MIN,
+        user_item_data.enhance_level,
+    )
+
+    existing_user_item = (
+        db.query(models.UserItem)
+        .filter(
+            models.UserItem.user_id == user_item_data.user_id,
+            models.UserItem.item_id == user_item_data.item_id,
+        )
+        .first()
+    )
 
     if existing_user_item:
         existing_user_item.quantity += user_item_data.quantity
+
+        if existing_user_item.enhance_level is None or existing_user_item.enhance_level < EQUIPMENT_ENHANCE_LEVEL_MIN:
+            existing_user_item.enhance_level = EQUIPMENT_ENHANCE_LEVEL_MIN
+
         db.commit()
         db.refresh(existing_user_item)
         return existing_user_item
 
-    user_item = models.UserItem(**user_item_data.model_dump())
+    user_item = models.UserItem(
+        user_id=user_item_data.user_id,
+        item_id=user_item_data.item_id,
+        quantity=user_item_data.quantity,
+        enhance_level=safe_enhance_level,
+        is_equipped=user_item_data.is_equipped,
+    )
 
     db.add(user_item)
     db.commit()
@@ -733,12 +810,21 @@ def create_user_item(
     response_model=List[schemas.UserItemResponse],
 )
 def get_user_items(user_id: int, db: Session = Depends(get_db)):
-    return (
+    user_items = (
         db.query(models.UserItem)
         .options(joinedload(models.UserItem.item))
         .filter(models.UserItem.user_id == user_id)
         .all()
     )
+
+    for user_item in user_items:
+        if user_item.enhance_level is None or user_item.enhance_level < EQUIPMENT_ENHANCE_LEVEL_MIN:
+            user_item.enhance_level = EQUIPMENT_ENHANCE_LEVEL_MIN
+
+        if user_item.quantity is None or user_item.quantity < 0:
+            user_item.quantity = 0
+
+    return user_items
 
 
 @app.patch(
@@ -757,7 +843,66 @@ def update_user_item(
         "보유 아이템을 찾을 수 없습니다.",
     )
 
-    apply_update(user_item, user_item_update)
+    update_data = user_item_update.model_dump(exclude_unset=True)
+
+    if "enhance_level" in update_data and update_data["enhance_level"] is not None:
+        update_data["enhance_level"] = max(
+            EQUIPMENT_ENHANCE_LEVEL_MIN,
+            update_data["enhance_level"],
+        )
+
+    if "quantity" in update_data and update_data["quantity"] is not None:
+        update_data["quantity"] = max(0, update_data["quantity"])
+
+    for key, value in update_data.items():
+        setattr(user_item, key, value)
+
+    db.commit()
+    db.refresh(user_item)
+    return user_item
+
+
+@app.patch(
+    "/user-items/{user_item_id}/equip/",
+    response_model=schemas.UserItemResponse,
+)
+def equip_user_item(user_item_id: int, db: Session = Depends(get_db)):
+    user_item = (
+        db.query(models.UserItem)
+        .options(joinedload(models.UserItem.item))
+        .filter(models.UserItem.user_item_id == user_item_id)
+        .first()
+    )
+
+    if user_item is None:
+        raise HTTPException(
+            status_code=404,
+            detail="보유 아이템을 찾을 수 없습니다.",
+        )
+
+    if user_item.item is None:
+        raise HTTPException(
+            status_code=404,
+            detail="아이템 정보를 찾을 수 없습니다.",
+        )
+
+    target_item_type = user_item.item.item_type
+
+    same_type_items = (
+        db.query(models.UserItem)
+        .join(models.Item, models.UserItem.item_id == models.Item.item_id)
+        .filter(
+            models.UserItem.user_id == user_item.user_id,
+            models.Item.item_type == target_item_type,
+        )
+        .all()
+    )
+
+    for item in same_type_items:
+        item.is_equipped = False
+
+    user_item.is_equipped = True
+
     db.commit()
     db.refresh(user_item)
     return user_item
@@ -781,7 +926,22 @@ def enhance_user_item(user_item_id: int, db: Session = Depends(get_db)):
             detail="보유 아이템을 찾을 수 없습니다.",
         )
 
-    required_count = user_item.enhance_level + 1
+    if user_item.enhance_level is None or user_item.enhance_level < EQUIPMENT_ENHANCE_LEVEL_MIN:
+        user_item.enhance_level = EQUIPMENT_ENHANCE_LEVEL_MIN
+
+    if user_item.quantity is None or user_item.quantity < 0:
+        user_item.quantity = 0
+
+
+    currency = get_or_404(
+        db,
+        models.UserCurrency,
+        models.UserCurrency.user_id == user_item.user_id,
+        "재화 정보를 찾을 수 없습니다.",
+    )
+
+    required_count = calculate_required_item_count(user_item.enhance_level)
+    required_gold = calculate_enhance_gold(user_item.enhance_level)
 
     if user_item.quantity < required_count:
         raise HTTPException(
@@ -789,11 +949,22 @@ def enhance_user_item(user_item_id: int, db: Session = Depends(get_db)):
             detail=f"강화 재료가 부족합니다. 필요 수량: {required_count}, 보유 수량: {user_item.quantity}",
         )
 
+    if currency.gold < required_gold:
+        raise HTTPException(
+            status_code=400,
+            detail=f"골드가 부족합니다. 필요 골드: {required_gold}, 보유 골드: {currency.gold}",
+        )
+
     user_item.quantity -= required_count
     user_item.enhance_level += 1
 
+
+    currency.gold -= required_gold
+    currency.updated_at = datetime.now()
+
     db.commit()
     db.refresh(user_item)
+    db.refresh(currency)
 
     return user_item
 

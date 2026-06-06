@@ -1,8 +1,8 @@
 from datetime import date, datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, EmailStr, Field
-from typing import List
+
 
 class CharacterInfoCreate(BaseModel):
     character_key: str
@@ -39,23 +39,24 @@ class UserUpdate(BaseModel):
 
 class UserStatusResponse(BaseModel):
     user_id: int
-    current_character_id: int
+    current_character_id: Optional[int] = None
 
-    player_level: int
-    player_exp: int
-    required_exp: int
+    player_level: int = 1
+    player_exp: int = 0
+    required_exp: int = 1000
 
-    hp_upgrade_lvl: int
-    attack_upgrade_lvl: int
-    defense_upgrade_lvl: int
+    hp_upgrade_lvl: int = 1
+    attack_upgrade_lvl: int = 1
+    defense_upgrade_lvl: int = 1
 
-    max_hp: int
-    attack_power: int
-    defense_power: int
+    max_hp: int = 100
+    attack_power: int = 20
+    defense_power: int = 20
 
-    current_stage: int
-    total_boss_kill_count: int
-    updated_at: datetime
+    current_stage: int = 1
+    max_cleared_stage: int = 0
+    total_boss_kill_count: int = 0
+    updated_at: Optional[datetime] = None
 
     current_character: Optional[CharacterInfoResponse] = None
 
@@ -218,7 +219,7 @@ class ItemResponse(BaseModel):
 class UserItemCreate(BaseModel):
     user_id: int
     item_id: int
-    quantity: int = Field(default=1, ge=0)
+    quantity: int = Field(default=1, ge=1)
     enhance_level: int = Field(default=1, ge=1)
     is_equipped: bool = False
 
@@ -263,10 +264,11 @@ class UserCurrencyUpdate(BaseModel):
 
 class BattleRewardRequest(BaseModel):
     user_id: int
-    stage_id: int
-    reward_gold: int = 0
-    reward_exp: int = 0
-    kill_count_add: int = 1
+    stage_id: int = Field(ge=1)
+    is_clear: bool
+    kill_count_add: int = Field(default=1, ge=0)
+    reward_gold: int = Field(default=0, ge=0)
+    reward_exp: int = Field(default=0, ge=0)
 
 
 class PhoneUsageLogCreate(BaseModel):
@@ -385,6 +387,7 @@ class AIFeedbackResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 class AIFeedbackCreate(BaseModel):
     user_id: int
     pattern_summary: str
@@ -393,7 +396,7 @@ class AIFeedbackCreate(BaseModel):
     feedback_content: str
     assigned_quest_ids: List[int]
 
-# 유니티가 GET 요청으로 받아갈 7일치 사용량 데이터 규격
+
 class RecentUsageResponse(BaseModel):
     recent_7days_minutes: List[int]
     yesterday_minutes: int

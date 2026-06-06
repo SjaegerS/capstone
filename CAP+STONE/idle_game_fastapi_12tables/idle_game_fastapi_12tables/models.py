@@ -14,6 +14,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, DateTime, ForeignKey
 
 from database import Base
 
@@ -127,6 +128,7 @@ class UserStatus(Base):
     defense_power = Column(Integer, nullable=False, default=5)
 
     current_stage = Column(Integer, default=1)
+    max_cleared_stage = Column(Integer, nullable=False, default=0)
     total_boss_kill_count = Column(Integer, default=0)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
