@@ -15,7 +15,7 @@ from routes import battle
 import models
 import schemas
 from database import get_db
-
+from sqlalchemy import desc
 
 app = FastAPI(title="Idle Game API")
 app.include_router(battle.router)
@@ -1577,3 +1577,83 @@ def reset_user_items(db: Session = Depends(get_db)):
         "message": "user_item 목록이 초기화되었습니다.",
         "deleted_count": deleted_count,
     }
+
+
+# ==========================================
+# 1. [GET] 유저의 최근 7일 폰 사용량 및 어제 퀘스트 완료 수 조회 API
+# ==========================================
+@app.get("/usage-logs/recent/{user_id}", response_model=schemas.RecentUsageResponse)
+def get_recent_usage(user_id: int, db: Session = Depends(get_db)):
+    # 1. 최근 7일 폰 사용량 가져오기 (가장 최근 날짜부터 7개)
+    logs = db.query(models.PhoneUsageLog).filter(models.PhoneUsageLog.user_id == user_id) \
+        .order_by(desc(models.PhoneUsageLog.usage_date)).limit(7).all()
+
+    # DB에 저장된 분(minutes) 데이터 추출
+    minutes_list = [log.total_screen_minutes for log in logs]
+
+    # 만약 유저가 가입한 지 얼마 안 돼서 데이터가 7개 미만이면, 기본값(예: 240분)으로 채움
+    while len(minutes_list) < 7:
+        minutes_list.append(240)
+    minutes_list.reverse()  # 과거 -> 어제 순서로 뒤집기
+
+    # 어제 사용량 (가장 마지막 값)
+    yesterday_minutes = minutes_list[-1]
+
+    # 2. 어제 완료한 퀘스트 개수 가져오기
+    yesterday = date.today() - timedelta(days=1)
+    completed_quests = db.query(models.UserQuest).filter(
+        models.UserQuest.user_id == user_id,
+        models.UserQuest.assigned_date == yesterday,
+        models.UserQuest.is_completed == True
+    ).count()
+
+    return {
+        "recent_7days_minutes": minutes_list,
+        "yesterday_minutes": yesterday_minutes,
+        "yesterday_quest_completed": completed_quests
+    }
+
+
+# ==========================================
+# 2. [POST] AI 분석 결과(피드백 및 퀘스트) DB 일괄 저장 API
+# ==========================================
+# ==========================================
+# 2. [POST] AI 분석 결과(피드백 및 퀘스트) DB 일괄 저장 API
+# ==========================================
+@app.post("/ai-feedbacks/")
+def create_ai_feedback(feedback_data: schemas.AIFeedbackCreate, db: Session = Depends(get_db)):
+    # 1. ai_feedback_log 테이블에 멘트와 등급 저장
+    new_feedback = models.AIFeedbackLog(
+        user_id=feedback_data.user_id,
+        feedback_content=feedback_data.feedback_content,
+        pattern_summary=feedback_data.pattern_summary,
+        condition_result=feedback_data.condition_result
+    )
+    db.add(new_feedback)
+
+    # 2. user_quest 테이블에 할당 (중복 체크 추가)
+    today = date.today()
+    for q_id in feedback_data.assigned_quest_ids:
+        # 이미 오늘 날짜로 발급된 퀘스트인지 DB에서 확인
+        existing_quest = db.query(models.UserQuest).filter(
+            models.UserQuest.user_id == feedback_data.user_id,
+            models.UserQuest.quest_id == q_id,
+            models.UserQuest.assigned_date == today
+        ).first()
+
+        # 오늘 발급된 기록이 없을 때만 새로 추가 (Duplicate 에러 방지)
+        if not existing_quest:
+            new_user_quest = models.UserQuest(
+                user_id=feedback_data.user_id,
+                quest_id=q_id,
+                progress_value=0,
+                is_completed=False,
+                is_reward_claimed=False,
+                assigned_date=today
+            )
+            db.add(new_user_quest)
+
+    # 3. 변경사항 확정 (DB Commit)
+    db.commit()
+
+    return {"status": "success", "message": "AI 피드백 로깅 및 퀘스트 할당이 성공적으로 완료되었습니다."}

@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Optional
 
 from pydantic import BaseModel, EmailStr, Field
-
+from typing import List
 
 class CharacterInfoCreate(BaseModel):
     character_key: str
@@ -384,3 +384,17 @@ class AIFeedbackResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class AIFeedbackCreate(BaseModel):
+    user_id: int
+    pattern_summary: str
+    usage_score: float
+    condition_result: str
+    feedback_content: str
+    assigned_quest_ids: List[int]
+
+# 유니티가 GET 요청으로 받아갈 7일치 사용량 데이터 규격
+class RecentUsageResponse(BaseModel):
+    recent_7days_minutes: List[int]
+    yesterday_minutes: int
+    yesterday_quest_completed: int
