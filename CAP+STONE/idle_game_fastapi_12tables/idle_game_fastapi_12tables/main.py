@@ -1337,26 +1337,42 @@ def get_user_usage_logs(user_id: int, db: Session = Depends(get_db)):
 # Quests
 # ======================================================
 
+class QuestProgressRequest(BaseModel):
+    quest_event: str
+    add_value: int = 1
+
+
 @app.post(
     "/quests/",
     response_model=schemas.QuestResponse,
     status_code=status.HTTP_201_CREATED,
 )
-def create_quest(quest_data: schemas.QuestCreate, db: Session = Depends(get_db)):
+def create_quest(
+    quest_data: schemas.QuestCreate,
+    db: Session = Depends(get_db),
+):
     quest = models.Quest(**quest_data.model_dump())
 
     db.add(quest)
     db.commit()
     db.refresh(quest)
+
     return quest
 
 
 @app.get("/quests/", response_model=List[schemas.QuestResponse])
 def get_quests(db: Session = Depends(get_db)):
-    return db.query(models.Quest).order_by(models.Quest.quest_id).all()
+    return (
+        db.query(models.Quest)
+        .order_by(models.Quest.quest_id.asc())
+        .all()
+    )
 
 
-@app.patch("/quests/{quest_id}", response_model=schemas.QuestResponse)
+@app.patch(
+    "/quests/{quest_id}",
+    response_model=schemas.QuestResponse,
+)
 def update_quest(
     quest_id: int,
     quest_update: schemas.QuestUpdate,
@@ -1369,120 +1385,178 @@ def update_quest(
         "퀘스트를 찾을 수 없습니다.",
     )
 
-    apply_update(quest, quest_update)
+    update_data = quest_update.model_dump(exclude_unset=True)
+
+    for key, value in update_data.items():
+        setattr(quest, key, value)
 
     db.commit()
     db.refresh(quest)
+
     return quest
 
 
-@app.post(
-    "/user-quests/",
-    response_model=schemas.UserQuestResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def create_user_quest(
-    user_quest_data: schemas.UserQuestCreate,
+@app.get("/quests/today/{user_id}")
+def get_today_quests_for_unity(
+    user_id: int,
     db: Session = Depends(get_db),
 ):
     get_or_404(
         db,
         models.User,
-        models.User.user_id == user_quest_data.user_id,
+        models.User.user_id == user_id,
         "사용자를 찾을 수 없습니다.",
     )
 
-    get_or_404(
-        db,
-        models.Quest,
-        models.Quest.quest_id == user_quest_data.quest_id,
-        "퀘스트를 찾을 수 없습니다.",
-    )
+    today_quests = get_today_user_quests(db, user_id)
 
-    user_quest = models.UserQuest(**user_quest_data.model_dump())
+    if len(today_quests) == 0:
+        condition_result = get_latest_condition_result(db, user_id)
 
-    try:
-        db.add(user_quest)
-        db.commit()
-        db.refresh(user_quest)
-        return user_quest
-    except IntegrityError:
-        db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="이미 해당 날짜에 같은 퀘스트가 할당되어 있습니다.",
+        assign_today_quests_by_condition(
+            db=db,
+            user_id=user_id,
+            condition_result=condition_result,
+            limit=4,
         )
 
+        db.commit()
+        today_quests = get_today_user_quests(db, user_id)
 
-@app.get(
-    "/users/{user_id}/quests/",
-    response_model=List[schemas.UserQuestResponse],
-)
-def get_user_quests(user_id: int, db: Session = Depends(get_db)):
-    return (
+    refresh_quest_bonus_progress(db, user_id)
+    db.commit()
+
+    today_quests = get_today_user_quests(db, user_id)
+
+    return {
+        "success": True,
+        "user_id": user_id,
+        "quests": [
+            serialize_user_quest(user_quest)
+            for user_quest in today_quests
+        ],
+    }
+
+
+@app.patch("/quests/progress/{user_id}")
+def update_quest_progress(
+    user_id: int,
+    request: schemas.QuestProgressRequest,
+    db: Session = Depends(get_db),
+):
+    user = db.query(models.User).filter(models.User.user_id == user_id).first()
+
+    if user is None:
+        raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다.")
+
+    if request.add_value <= 0:
+        raise HTTPException(status_code=400, detail="add_value는 1 이상이어야 합니다.")
+
+    request_event = normalize_quest_event(request.quest_event)
+
+    matched_user_quests = (
         db.query(models.UserQuest)
+        .join(models.Quest, models.UserQuest.quest_id == models.Quest.quest_id)
         .options(joinedload(models.UserQuest.quest))
         .filter(models.UserQuest.user_id == user_id)
-        .order_by(models.UserQuest.assigned_date.desc())
+        .filter(models.UserQuest.assigned_date == date.today())
+        .filter(func.upper(models.Quest.quest_event) == request_event)
+        .filter(models.Quest.is_active == True)
+        .filter(models.UserQuest.is_reward_claimed == False)
         .all()
     )
 
+    updated_count = 0
+    rewarded_count = 0
+    total_reward_gold = 0
+    total_reward_gem = 0
 
-@app.patch(
-    "/user-quests/{user_quest_id}",
-    response_model=schemas.UserQuestResponse,
-)
-def update_user_quest(
+    for uq in matched_user_quests:
+        if uq.quest is None:
+            continue
+
+        target_value = max(1, int(uq.quest.target_value or 1))
+        current_value = int(uq.current_value or 0)
+
+        # 이미 완료됐는데 보상만 안 받은 상태도 처리
+        if uq.is_completed:
+            reward_gold = int(uq.quest.reward_gold or 0)
+            reward_gem = int(uq.quest.reward_gem or 0)
+
+            grant_quest_reward_if_needed(db, uq)
+
+            if uq.is_reward_claimed:
+                rewarded_count += 1
+                total_reward_gold += reward_gold
+                total_reward_gem += reward_gem
+
+            continue
+
+        uq.current_value = min(
+            current_value + request.add_value,
+            target_value,
+        )
+
+        if uq.current_value >= target_value:
+            uq.is_completed = True
+            uq.completed_at = datetime.now()
+
+            reward_gold = int(uq.quest.reward_gold or 0)
+            reward_gem = int(uq.quest.reward_gem or 0)
+
+            grant_quest_reward_if_needed(db, uq)
+
+            if uq.is_reward_claimed:
+                rewarded_count += 1
+                total_reward_gold += reward_gold
+                total_reward_gem += reward_gem
+
+        updated_count += 1
+
+    refresh_quest_bonus_progress(db, user_id)
+
+    db.commit()
+
+    currency = (
+        db.query(models.UserCurrency)
+        .filter(models.UserCurrency.user_id == user_id)
+        .first()
+    )
+
+    all_user_quests = (
+        db.query(models.UserQuest)
+        .join(models.Quest, models.UserQuest.quest_id == models.Quest.quest_id)
+        .options(joinedload(models.UserQuest.quest))
+        .filter(models.UserQuest.user_id == user_id)
+        .filter(models.UserQuest.assigned_date == date.today())
+        .order_by(models.UserQuest.user_quest_id.asc())
+        .all()
+    )
+
+    result = [
+        serialize_user_quest(uq)
+        for uq in all_user_quests
+        if uq.quest is not None
+    ]
+
+    return {
+        "success": True,
+        "user_id": user_id,
+        "quest_event": request.quest_event,
+        "updated_count": updated_count,
+        "rewarded_count": rewarded_count,
+        "reward_gold": total_reward_gold,
+        "reward_gem": total_reward_gem,
+        "total_gold": int(currency.gold or 0) if currency else 0,
+        "total_gem": int(currency.gem or 0) if currency else 0,
+        "quests": result,
+    }
+
+@app.patch("/quests/claim/{user_quest_id}")
+def claim_quest_reward_for_unity(
     user_quest_id: int,
-    user_quest_update: schemas.UserQuestUpdate,
     db: Session = Depends(get_db),
 ):
-    user_quest = get_or_404(
-        db,
-        models.UserQuest,
-        models.UserQuest.user_quest_id == user_quest_id,
-        "유저 퀘스트를 찾을 수 없습니다.",
-    )
-
-    apply_update(user_quest, user_quest_update)
-
-    if user_quest.is_completed and user_quest.completed_at is None:
-        user_quest.completed_at = func.now()
-
-    db.commit()
-    db.refresh(user_quest)
-    return user_quest
-
-
-@app.patch(
-    "/user-quests/{user_quest_id}/complete/",
-    response_model=schemas.UserQuestResponse,
-)
-def complete_user_quest(user_quest_id: int, db: Session = Depends(get_db)):
-    user_quest = get_or_404(
-        db,
-        models.UserQuest,
-        models.UserQuest.user_quest_id == user_quest_id,
-        "유저 퀘스트를 찾을 수 없습니다.",
-    )
-
-    user_quest.is_completed = True
-    user_quest.progress_value = max(
-        user_quest.progress_value,
-        user_quest.quest.target_value,
-    )
-    user_quest.completed_at = func.now()
-
-    db.commit()
-    db.refresh(user_quest)
-    return user_quest
-
-
-@app.patch(
-    "/user-quests/{user_quest_id}/claim-reward/",
-    response_model=schemas.UserQuestResponse,
-)
-def claim_quest_reward(user_quest_id: int, db: Session = Depends(get_db)):
     user_quest = (
         db.query(models.UserQuest)
         .options(joinedload(models.UserQuest.quest))
@@ -1491,13 +1565,22 @@ def claim_quest_reward(user_quest_id: int, db: Session = Depends(get_db)):
     )
 
     if user_quest is None:
-        raise HTTPException(status_code=404, detail="유저 퀘스트를 찾을 수 없습니다.")
+        raise HTTPException(
+            status_code=404,
+            detail="유저 퀘스트를 찾을 수 없습니다.",
+        )
 
     if not user_quest.is_completed:
-        raise HTTPException(status_code=400, detail="완료되지 않은 퀘스트입니다.")
+        raise HTTPException(
+            status_code=400,
+            detail="완료되지 않은 퀘스트입니다.",
+        )
 
     if user_quest.is_reward_claimed:
-        raise HTTPException(status_code=400, detail="이미 보상을 수령했습니다.")
+        raise HTTPException(
+            status_code=400,
+            detail="이미 보상을 수령했습니다.",
+        )
 
     currency = get_or_404(
         db,
@@ -1506,22 +1589,132 @@ def claim_quest_reward(user_quest_id: int, db: Session = Depends(get_db)):
         "재화 정보를 찾을 수 없습니다.",
     )
 
-    currency.gold += user_quest.quest.reward_gold
-    currency.gem += user_quest.quest.reward_gem
+    reward_gold = int(user_quest.quest.reward_gold or 0)
+    reward_gem = int(user_quest.quest.reward_gem or 0)
+
+    currency.gold += reward_gold
+    currency.gem += reward_gem
     currency.updated_at = datetime.now()
 
     user_quest.is_reward_claimed = True
 
     db.commit()
+    db.refresh(currency)
     db.refresh(user_quest)
-    return user_quest
+
+    return {
+        "success": True,
+        "message": "보상을 수령했습니다.",
+        "user_id": int(user_quest.user_id),
+        "user_quest_id": int(user_quest.user_quest_id),
+        "reward_gold": reward_gold,
+        "reward_gem": reward_gem,
+        "total_gold": int(currency.gold or 0),
+        "total_gem": int(currency.gem or 0),
+        "is_reward_claimed": bool(user_quest.is_reward_claimed),
+    }
+
+@app.post("/quests/reward-missing/{user_id}")
+def reward_missing_completed_quests(
+    user_id: int,
+    db: Session = Depends(get_db),
+):
+    get_or_404(
+        db,
+        models.User,
+        models.User.user_id == user_id,
+        "사용자를 찾을 수 없습니다.",
+    )
+
+    completed_unclaimed_quests = (
+        db.query(models.UserQuest)
+        .options(joinedload(models.UserQuest.quest))
+        .filter(models.UserQuest.user_id == user_id)
+        .filter(models.UserQuest.assigned_date == date.today())
+        .filter(models.UserQuest.is_completed == True)
+        .filter(models.UserQuest.is_reward_claimed == False)
+        .all()
+    )
+
+    reward_count = 0
+    total_reward_gold = 0
+    total_reward_gem = 0
+
+    for uq in completed_unclaimed_quests:
+        if uq.quest is None:
+            continue
+
+        reward_gold = int(uq.quest.reward_gold or 0)
+        reward_gem = int(uq.quest.reward_gem or 0)
+
+        grant_quest_reward_if_needed(db, uq)
+
+        if uq.is_reward_claimed:
+            reward_count += 1
+            total_reward_gold += reward_gold
+            total_reward_gem += reward_gem
+
+    db.commit()
+
+    currency = (
+        db.query(models.UserCurrency)
+        .filter(models.UserCurrency.user_id == user_id)
+        .first()
+    )
+
+    return {
+        "success": True,
+        "user_id": user_id,
+        "reward_count": reward_count,
+        "reward_gold": total_reward_gold,
+        "reward_gem": total_reward_gem,
+        "total_gold": int(currency.gold or 0) if currency else 0,
+        "total_gem": int(currency.gem or 0) if currency else 0,
+    }
 
 
 # ======================================================
 # AI Feedback
 # ======================================================
 
-def get_recent_average_minutes(db: Session, user_id: int, exclude_date: date) -> float:
+QUEST_EVENT_PHONE_USE = "PHONE_USE"
+QUEST_EVENT_GOLD_DUN = "GOLDDUN"
+QUEST_EVENT_PLAY_TIME = "PLAYTIME"
+QUEST_EVENT_STAT = "STAT"
+QUEST_EVENT_BATTLE_WIN = "BATTLEWIN"
+QUEST_EVENT_QUEST = "QUEST"
+
+
+def normalize_quest_event(event_name: str) -> str:
+    if event_name is None:
+        return "NONE"
+
+    return (
+        event_name
+        .strip()
+        .upper()
+        .replace("-", "_")
+        .replace(" ", "_")
+    )
+
+
+def normalize_condition_to_quest_types(condition_result: str) -> list[str]:
+    condition = (condition_result or "NORMAL").strip().upper()
+
+    if condition == "BEST":
+        return ["상", "중", "공통", "BEST", "GOOD", "COMMON"]
+
+    if condition == "GOOD":
+        return ["중", "공통", "GOOD", "COMMON"]
+
+    return ["하", "공통", "NORMAL", "COMMON"]
+
+
+def get_recent_average_minutes(
+    db: Session,
+    user_id: int,
+    exclude_date: date,
+) -> float:
     logs = (
         db.query(models.PhoneUsageLog)
         .filter(
@@ -1539,22 +1732,291 @@ def get_recent_average_minutes(db: Session, user_id: int, exclude_date: date) ->
     return sum(log.total_screen_minutes for log in logs) / len(logs)
 
 
-def get_previous_condition_quest_completed(db: Session, user_id: int) -> int:
+def get_previous_condition_quest_completed(
+    db: Session,
+    user_id: int,
+) -> int:
     yesterday = date.today() - timedelta(days=1)
 
-    quests = (
+    return (
         db.query(models.UserQuest)
         .join(models.Quest, models.UserQuest.quest_id == models.Quest.quest_id)
         .filter(
             models.UserQuest.user_id == user_id,
             models.UserQuest.assigned_date == yesterday,
             models.Quest.is_condition_check == True,
+            models.UserQuest.is_completed == True,
+        )
+        .count()
+    )
+
+
+def get_latest_condition_result(
+    db: Session,
+    user_id: int,
+) -> str:
+    feedback = (
+        db.query(models.AIFeedbackLog)
+        .filter(models.AIFeedbackLog.user_id == user_id)
+        .order_by(models.AIFeedbackLog.created_at.desc())
+        .first()
+    )
+
+    if feedback is None:
+        return "BEST"
+
+    return feedback.condition_result or "NORMAL"
+
+
+def get_today_user_quests(
+    db: Session,
+    user_id: int,
+):
+    today = date.today()
+
+    return (
+        db.query(models.UserQuest)
+        .options(joinedload(models.UserQuest.quest))
+        .filter(
+            models.UserQuest.user_id == user_id,
+            models.UserQuest.assigned_date == today,
+        )
+        .order_by(models.UserQuest.user_quest_id.asc())
+        .all()
+    )
+
+
+def serialize_user_quest(user_quest: models.UserQuest) -> dict:
+    quest = user_quest.quest
+
+    current_value = int(user_quest.current_value or 0)
+    target_value = int(quest.target_value or 1)
+
+    return {
+        "user_quest_id": int(user_quest.user_quest_id),
+        "quest_id": int(user_quest.quest_id),
+
+        "quest_name": quest.quest_description or "퀘스트",
+        "quest_desc": quest.quest_description or "",
+
+        "quest_type": quest.quest_type,
+        "quest_grade": quest.quest_type,
+        "quest_event": quest.quest_event,
+
+        "current_value": max(0, current_value),
+        "target_value": max(1, target_value),
+
+        "reward_gold": int(quest.reward_gold or 0),
+        "reward_gem": int(quest.reward_gem or 0),
+
+        "is_completed": bool(user_quest.is_completed),
+        "is_reward_claimed": bool(user_quest.is_reward_claimed),
+
+        "assigned_date": str(user_quest.assigned_date),
+        "completed_at": user_quest.completed_at.isoformat() if user_quest.completed_at else None,
+    }
+
+
+def assign_today_quests_by_condition(
+    db: Session,
+    user_id: int,
+    condition_result: str,
+    limit: int = 4,
+):
+    """
+    오늘 퀘스트가 없을 때만 생성.
+    일반 퀘스트 limit개 + Quest 보너스 퀘스트 1개를 할당한다.
+    """
+    today = date.today()
+
+    existing_count = (
+        db.query(models.UserQuest)
+        .filter(
+            models.UserQuest.user_id == user_id,
+            models.UserQuest.assigned_date == today,
+        )
+        .count()
+    )
+
+    if existing_count > 0:
+        return
+
+    allowed_types = normalize_condition_to_quest_types(condition_result)
+
+    normal_quests = (
+        db.query(models.Quest)
+        .filter(
+            models.Quest.is_active == True,
+            models.Quest.quest_type.in_(allowed_types),
+            func.upper(models.Quest.quest_event) != QUEST_EVENT_QUEST,
+        )
+        .order_by(
+            models.Quest.quest_type.asc(),
+            models.Quest.quest_id.asc(),
+        )
+        .limit(limit)
+        .all()
+    )
+
+    bonus_quest = (
+        db.query(models.Quest)
+        .filter(
+            models.Quest.is_active == True,
+            func.upper(models.Quest.quest_event) == QUEST_EVENT_QUEST,
+        )
+        .order_by(models.Quest.quest_id.asc())
+        .first()
+    )
+
+    quests = list(normal_quests)
+
+    if bonus_quest is not None:
+        quests.append(bonus_quest)
+
+    if len(quests) == 0:
+        raise HTTPException(
+            status_code=404,
+            detail=f"{condition_result} 조건에 맞는 활성 퀘스트가 없습니다.",
+        )
+
+    for quest in quests:
+        db.add(
+            models.UserQuest(
+                user_id=user_id,
+                quest_id=quest.quest_id,
+                current_value=0,
+                is_completed=False,
+                is_reward_claimed=False,
+                assigned_date=today,
+                completed_at=None,
+            )
+        )
+
+
+def grant_quest_reward_if_needed(
+    db: Session,
+    user_quest: models.UserQuest,
+):
+    if user_quest is None:
+        return
+
+    if not user_quest.is_completed:
+        return
+
+    if user_quest.is_reward_claimed:
+        return
+
+    currency = get_or_404(
+        db,
+        models.UserCurrency,
+        models.UserCurrency.user_id == user_quest.user_id,
+        "재화 정보를 찾을 수 없습니다.",
+    )
+
+    reward_gold = int(user_quest.quest.reward_gold or 0)
+    reward_gem = int(user_quest.quest.reward_gem or 0)
+
+    currency.gold += reward_gold
+    currency.gem += reward_gem
+    currency.updated_at = datetime.now()
+
+    user_quest.is_reward_claimed = True
+
+
+def increase_today_quest_progress(
+    db: Session,
+    user_id: int,
+    quest_event: str,
+    add_value: int = 1,
+):
+    today = date.today()
+    event_name = normalize_quest_event(quest_event)
+
+    user_quests = (
+        db.query(models.UserQuest)
+        .join(models.Quest, models.UserQuest.quest_id == models.Quest.quest_id)
+        .options(joinedload(models.UserQuest.quest))
+        .filter(
+            models.UserQuest.user_id == user_id,
+            models.UserQuest.assigned_date == today,
+            models.UserQuest.is_reward_claimed == False,
+            func.upper(models.Quest.quest_event) == event_name,
         )
         .all()
     )
 
-    return sum(1 for quest in quests if quest.is_completed)
+    for user_quest in user_quests:
+        if user_quest.is_completed:
+            grant_quest_reward_if_needed(db, user_quest)
+            continue
 
+        target_value = max(1, int(user_quest.quest.target_value or 1))
+        current_value = int(user_quest.current_value or 0)
+
+        new_value = min(target_value, current_value + max(1, add_value))
+
+        user_quest.current_value = new_value
+
+        if new_value >= target_value:
+            user_quest.is_completed = True
+            user_quest.completed_at = datetime.now()
+            grant_quest_reward_if_needed(db, user_quest)
+
+    return user_quests
+
+
+def refresh_quest_bonus_progress(
+    db: Session,
+    user_id: int,
+):
+    today = date.today()
+
+    today_quests = (
+        db.query(models.UserQuest)
+        .join(models.Quest, models.UserQuest.quest_id == models.Quest.quest_id)
+        .options(joinedload(models.UserQuest.quest))
+        .filter(
+            models.UserQuest.user_id == user_id,
+            models.UserQuest.assigned_date == today,
+        )
+        .all()
+    )
+
+    if len(today_quests) == 0:
+        return
+
+    normal_quests = [
+        uq for uq in today_quests
+        if normalize_quest_event(uq.quest.quest_event) != QUEST_EVENT_QUEST
+    ]
+
+    bonus_quests = [
+        uq for uq in today_quests
+        if normalize_quest_event(uq.quest.quest_event) == QUEST_EVENT_QUEST
+    ]
+
+    if len(normal_quests) == 0 or len(bonus_quests) == 0:
+        return
+
+    all_normal_claimed = all(
+        uq.is_completed and uq.is_reward_claimed
+        for uq in normal_quests
+    )
+
+    for bonus in bonus_quests:
+        if all_normal_claimed:
+            bonus.current_value = max(1, int(bonus.quest.target_value or 1))
+            bonus.is_completed = True
+
+            if bonus.completed_at is None:
+                bonus.completed_at = datetime.now()
+
+            grant_quest_reward_if_needed(db, bonus)
+        else:
+            if not bonus.is_reward_claimed:
+                bonus.current_value = 0
+                bonus.is_completed = False
+                bonus.completed_at = None
 
 @app.post(
     "/users/{user_id}/ai-feedbacks/generate/",
@@ -1583,6 +2045,18 @@ def generate_ai_feedback(
     )
 
     if today_feedback:
+        assign_today_quests_by_condition(
+            db=db,
+            user_id=user_id,
+            condition_result=today_feedback.condition_result,
+            limit=4,
+        )
+
+        refresh_quest_bonus_progress(db, user_id)
+
+        db.commit()
+        db.refresh(today_feedback)
+
         return today_feedback
 
     usage_log = None
@@ -1622,8 +2096,16 @@ def generate_ai_feedback(
 
         total_screen_minutes = usage_log.total_screen_minutes
 
-    average_minutes = get_recent_average_minutes(db, user_id, date.today())
-    previous_completed = get_previous_condition_quest_completed(db, user_id)
+    average_minutes = get_recent_average_minutes(
+        db=db,
+        user_id=user_id,
+        exclude_date=date.today(),
+    )
+
+    previous_completed = get_previous_condition_quest_completed(
+        db=db,
+        user_id=user_id,
+    )
 
     condition_result = decide_condition_result(
         today_minutes=total_screen_minutes,
@@ -1649,15 +2131,36 @@ def generate_ai_feedback(
 
     db.add(feedback)
 
-    # 오늘 컨디션 결과에 맞춰 user_buff 4개 갱신/생성
     create_user_daily_buffs(
         db=db,
         user_id=user_id,
         condition_result=condition_result,
     )
 
+    assign_today_quests_by_condition(
+        db=db,
+        user_id=user_id,
+        condition_result=condition_result,
+        limit=4,
+    )
+
+    db.flush()
+
+    increase_today_quest_progress(
+        db=db,
+        user_id=user_id,
+        quest_event="Phone_use",
+        add_value=1,
+    )
+
+    refresh_quest_bonus_progress(
+        db=db,
+        user_id=user_id,
+    )
+
     db.commit()
     db.refresh(feedback)
+
     return feedback
 
 
@@ -1665,13 +2168,291 @@ def generate_ai_feedback(
     "/users/{user_id}/ai-feedbacks/",
     response_model=List[schemas.AIFeedbackResponse],
 )
-def get_user_ai_feedbacks(user_id: int, db: Session = Depends(get_db)):
+def get_user_ai_feedbacks(
+    user_id: int,
+    db: Session = Depends(get_db),
+):
     return (
         db.query(models.AIFeedbackLog)
         .filter(models.AIFeedbackLog.user_id == user_id)
         .order_by(models.AIFeedbackLog.created_at.desc())
         .all()
     )
+
+
+@app.get("/feedback/latest/{user_id}")
+def get_latest_feedback_for_unity(
+    user_id: int,
+    db: Session = Depends(get_db),
+):
+    feedback = (
+        db.query(models.AIFeedbackLog)
+        .filter(models.AIFeedbackLog.user_id == user_id)
+        .order_by(models.AIFeedbackLog.created_at.desc())
+        .first()
+    )
+
+    if feedback is None:
+        return {
+            "success": False,
+            "user_id": user_id,
+            "pattern_summary": "INITIAL",
+            "previous_condition_quest_completed": 0,
+            "condition_result": "BEST",
+            "feedback_content": "첫날은 기본 컨디션으로 시작합니다.",
+            "created_at": None,
+        }
+
+    return {
+        "success": True,
+        "user_id": int(feedback.user_id),
+        "pattern_summary": feedback.pattern_summary or "",
+        "previous_condition_quest_completed": int(feedback.previous_condition_quest_completed or 0),
+        "condition_result": feedback.condition_result or "NORMAL",
+        "feedback_content": feedback.feedback_content,
+        "created_at": feedback.created_at.isoformat() if feedback.created_at else None,
+    }
+
+
+# Quest API
+# =========================================================
+# Quest Fallback / Daily Quest Auto Assign
+# =========================================================
+
+DEFAULT_CONDITION_RESULT = "best"   # 최상
+DEFAULT_QUEST_SCORE = "high"        # 상
+
+
+def _model_columns(model):
+    return set(model.__table__.columns.keys())
+
+
+def _create_model_instance(model, **kwargs):
+    columns = _model_columns(model)
+    filtered = {k: v for k, v in kwargs.items() if k in columns}
+    return model(**filtered)
+
+
+def _seed_default_quests_if_empty(db):
+    """
+    quest 테이블이 비어 있으면 기본 퀘스트를 생성.
+    기본값은 중 / 상 / 공통 퀘스트만 사용.
+    """
+
+    quest_count = db.query(models.Quest).count()
+
+    if quest_count > 0:
+        return
+
+    default_quests = [
+        {
+            "quest_type": "중",
+            "quest_event": "Phone_use",
+            "quest_description": "어제 핸드폰 사용시간 평균 이하로 사용",
+            "is_condition_check": False,
+            "target_value": 0,
+            "reward_gold": 0,
+            "reward_gem": 250,
+            "is_active": True,
+        },
+        {
+            "quest_type": "중",
+            "quest_event": "GoldRun",
+            "quest_description": "골드 컨텐츠 3회 플레이",
+            "is_condition_check": False,
+            "target_value": 3,
+            "reward_gold": 0,
+            "reward_gem": 250,
+            "is_active": True,
+        },
+        {
+            "quest_type": "상",
+            "quest_event": "Stat",
+            "quest_description": "스탯 강화 10회 진행",
+            "is_condition_check": False,
+            "target_value": 10,
+            "reward_gold": 0,
+            "reward_gem": 250,
+            "is_active": True,
+        },
+        {
+            "quest_type": "공통",
+            "quest_event": "BattleWin",
+            "quest_description": "스테이지 10회 클리어",
+            "is_condition_check": False,
+            "target_value": 10,
+            "reward_gold": 0,
+            "reward_gem": 250,
+            "is_active": True,
+        },
+        {
+            "quest_type": "공통",
+            "quest_event": "Quest",
+            "quest_description": "일일 퀘스트 완료",
+            "is_condition_check": False,
+            "target_value": 0,
+            "reward_gold": 0,
+            "reward_gem": 250,
+            "is_active": True,
+        },
+    ]
+
+    for quest_data in default_quests:
+        quest = _create_model_instance(models.Quest, **quest_data)
+        db.add(quest)
+
+    db.commit()
+
+
+def _get_latest_ai_condition_or_default(user_id: int, db):
+    """
+    AI 피드백 로그가 있으면 최신 condition_result 사용.
+    없으면 best로 고정.
+    """
+    if not hasattr(models, "AIFeedbackLog"):
+        return DEFAULT_CONDITION_RESULT
+
+    latest_feedback = (
+        db.query(models.AIFeedbackLog)
+        .filter(models.AIFeedbackLog.user_id == user_id)
+        .order_by(models.AIFeedbackLog.created_at.desc())
+        .first()
+    )
+
+    if latest_feedback is None:
+        return DEFAULT_CONDITION_RESULT
+
+    condition = getattr(latest_feedback, "condition_result", None)
+
+    if condition is None or condition == "":
+        return DEFAULT_CONDITION_RESULT
+
+    return condition
+
+
+def _assign_today_quests_if_empty(user_id: int, db):
+    """
+    user_quest에 해당 유저 퀘스트가 없으면
+    quest_type이 중 / 상 / 공통인 active 퀘스트만 자동 할당.
+    """
+
+    existing_count = (
+        db.query(models.UserQuest)
+        .filter(models.UserQuest.user_id == user_id)
+        .count()
+    )
+
+    if existing_count > 0:
+        return
+
+    _seed_default_quests_if_empty(db)
+
+    quests = (
+        db.query(models.Quest)
+        .filter(models.Quest.is_active == True)
+        .filter(models.Quest.quest_type.in_(["중", "상", "공통"]))
+        .all()
+    )
+
+    for quest in quests:
+        user_quest = _create_model_instance(
+            models.UserQuest,
+            user_id=user_id,
+            quest_id=quest.quest_id,
+            current_value=0,
+            is_completed=False,
+            is_reward_claimed=False,
+            assigned_date=date.today(),
+        )
+        db.add(user_quest)
+
+    db.commit()
+
+
+@app.get("/users/{user_id}/quests/popup")
+def get_user_quest_popup(user_id: int, db: Session = Depends(get_db)):
+    """
+    QuestPopupController에서 호출할 API.
+
+    역할:
+    1. 유저 존재 확인
+    2. AI 결과가 없으면 condition_result = best
+    3. 퀘스트 스코어가 없으면 quest_score = high
+    4. user_quest가 비어 있으면 자동 생성
+    5. 팝업에 띄울 퀘스트 목록 반환
+    """
+
+    user = db.query(models.User).filter(models.User.user_id == user_id).first()
+
+    if user is None:
+        raise HTTPException(status_code=404, detail="유저를 찾을 수 없습니다.")
+
+    condition_result = _get_latest_ai_condition_or_default(user_id, db)
+    quest_score = DEFAULT_QUEST_SCORE
+
+    _assign_today_quests_if_empty(user_id, db)
+
+    user_quests = (
+        db.query(models.UserQuest)
+        .filter(models.UserQuest.user_id == user_id)
+        .all()
+    )
+
+    result = []
+
+    for uq in user_quests:
+        quest = db.query(models.Quest).filter(models.Quest.quest_id == uq.quest_id).first()
+
+        if quest is None:
+            continue
+
+        reward_gold = getattr(quest, "reward_gold", 0)
+        reward_gem = getattr(quest, "reward_gem", 0)
+
+        progress = getattr(uq, "progress", 0)
+        target_progress = getattr(uq, "target_progress", 1)
+
+        result.append(
+            {
+                "user_quest_id": uq.user_quest_id,
+                "quest_id": quest.quest_id,
+
+                "quest_name": getattr(quest, "quest_description", ""),
+                "quest_desc": getattr(quest, "quest_description", ""),
+
+                "quest_type": getattr(quest, "quest_type", ""),
+                "quest_grade": getattr(quest, "quest_grade", ""),
+                "quest_event": getattr(quest, "quest_event", ""),
+
+                "current_value": getattr(uq, "current_value", 0),
+                "target_value": getattr(quest, "target_value", 1),
+
+                "reward_gold": getattr(quest, "reward_gold", 0),
+                "reward_gem": getattr(quest, "reward_gem", 0),
+
+                "is_completed": uq.is_completed,
+                "is_reward_claimed": uq.is_reward_claimed,
+
+                "assigned_date": str(getattr(uq, "assigned_date", "")),
+                "completed_at": str(getattr(uq, "completed_at", "")),
+            }
+        )
+
+    return {
+        "success": True,
+        "user_id": user_id,
+        "condition_result": condition_result,
+        "condition_text": "최상",
+        "quest_score": quest_score,
+        "quest_score_text": "상",
+        "quests": result,
+    }
+
+
+
+
+
+
 
 
 # ======================================================
@@ -1817,7 +2598,7 @@ def create_ai_feedback(feedback_data: schemas.AIFeedbackCreate, db: Session = De
             new_user_quest = models.UserQuest(
                 user_id=feedback_data.user_id,
                 quest_id=q_id,
-                progress_value=0,
+                current_value=0,
                 is_completed=False,
                 is_reward_claimed=False,
                 assigned_date=today

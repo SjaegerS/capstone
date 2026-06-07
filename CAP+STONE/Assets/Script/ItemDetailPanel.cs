@@ -484,6 +484,13 @@ public class ItemDetailPanel : MonoBehaviour
                 EquipmentInventoryView.RefreshAll();
                 RefreshUI();
                 RefreshBattlePlayerStats();
+
+                QuestProgressReporter questReporter = FindFirstObjectByType<QuestProgressReporter>();
+
+                if (questReporter != null)
+                {
+                    questReporter.ReportProgress("EQUIPMENT_ENHANCE", 1);
+                }
             }
         );
     }

@@ -333,9 +333,17 @@ class Quest(Base):
     __tablename__ = "quest"
 
     quest_id = Column(BigInteger, primary_key=True, autoincrement=True)
+
+    # 공통 / 하 / 중 / 상
     quest_type = Column(String(100), nullable=False)
+
+    # BattleWin, Phone_use, PlayTime, GoldDun, Stat
+    quest_event = Column(String(50), nullable=False, default="NONE")
+
+    # Unity에 표시할 퀘스트 문구
     quest_description = Column(Text, nullable=True)
 
+    # 전날 완료 개수 계산용 퀘스트 여부
     is_condition_check = Column(Boolean, default=False)
 
     target_value = Column(Integer, nullable=False)
@@ -363,10 +371,12 @@ class UserQuest(Base):
         nullable=False,
     )
 
-    progress_value = Column(Integer, default=0)
-    is_completed = Column(Boolean, default=False)
-    is_reward_claimed = Column(Boolean, default=False)
-    assigned_date = Column(Date, nullable=False)
+    current_value = Column(Integer, nullable=False, default=0)
+
+    is_completed = Column(Boolean, nullable=False, default=False)
+    is_reward_claimed = Column(Boolean, nullable=False, default=False)
+
+    assigned_date = Column(Date, nullable=True)
     completed_at = Column(DateTime, nullable=True)
 
     user = relationship("User", back_populates="user_quests")

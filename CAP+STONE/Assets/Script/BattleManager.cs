@@ -878,9 +878,17 @@ public class BattleManager : MonoBehaviour
                     continue;
                 }
 
-                if (!dbSaveSuccess)
+               if (!dbSaveSuccess)
                 {
                     CurrencyUIManager.Instance?.AddGold(rewardGold);
+                }
+
+                QuestProgressReporter questReporter =
+                    FindFirstObjectByType<QuestProgressReporter>();
+
+                if (questReporter != null)
+                {
+                    questReporter.ReportProgress(QuestEvent.BattleWin, 1);
                 }
 
                 coinSpawner?.SpawnCoins(enemyDeathPos);

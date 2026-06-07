@@ -1,12 +1,11 @@
+using System;
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
 using Newtonsoft.Json;
 using UnityEngine.InputSystem;
 
-// 백엔드에서 받아올 데이터 모델 (FastAPI의 RecentUsageResponse와 완벽 일치)
-[System.Serializable]
+[Serializable]
 public class UserUsageSummary
 {
     public int[] recent_7days_minutes;
@@ -14,164 +13,247 @@ public class UserUsageSummary
     public int yesterday_quest_completed;
 }
 
+[Serializable]
+public class AIFeedbackGenerateRequest
+{
+    public int total_screen_minutes;
+}
+
+[Serializable]
+public class AIFeedbackGenerateResponse
+{
+    public int feedback_id;
+    public int user_id;
+    public int usage_log_id;
+
+    public string feedback_content;
+    public string pattern_summary;
+    public int previous_condition_quest_completed;
+    public string condition_result;
+    public string created_at;
+}
+
 public class GameManager : MonoBehaviour
 {
-    [Header("매니저 연결")]
-    public AIManager aiManager; // 하이어라키의 AIManager 연결
+    [Header("Backend")]
+    [SerializeField] private string backendUrl = "http://127.0.0.1:8000";
 
-    [Header("백엔드 설정")]
-    private string backendUrl = "http://127.0.0.1:8000"; // 로컬 FastAPI 주소
-    private int currentUserId; // public을 private으로 변경하고 고정 숫자(= 9) 삭제
+    [Header("Test")]
+    [SerializeField] private bool triggerWithSpaceKey = true;
 
-    // 중복 호출 방지용 락(Lock) 변수
-    private bool isRequesting = false;
+    private int currentUserId;
+    private bool isRequesting;
 
-    void Start()
+    private void Start()
     {
-        // "CurrentUserId"를 "USER_ID"로 바꿉니다! (대문자, 스펠링 정확히 일치해야 함)
-        currentUserId = PlayerPrefs.GetInt("USER_ID", 1);
+        currentUserId = ResolveUserId();
 
-        Debug.Log($"[GameManager] 준비 완료 (접속 ID: {currentUserId}). 스페이스바(Space)를 누르면 AI 분석이 1회 시작됩니다.");
+        Debug.Log(
+            $"[GameManager] 준비 완료 | USER_ID={currentUserId}, " +
+            $"Space 테스트={triggerWithSpaceKey}"
+        );
     }
 
-    void Update()
+    private void Update()
     {
-        if (Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame && !isRequesting)
+        if (!triggerWithSpaceKey)
+            return;
+
+        if (Keyboard.current != null &&
+            Keyboard.current.spaceKey.wasPressedThisFrame &&
+            !isRequesting)
         {
             StartCoroutine(RoutineDailyAIAnalysis());
         }
     }
 
-    // ==========================================================
-    // 0. FastAPI에서 유저의 실제 사용량 데이터를 가져오는 함수
-    // ==========================================================
-    private IEnumerator FetchUserDataFromBackend(System.Action<UserUsageSummary> onComplete)
+    public void RunDailyAIAnalysis()
     {
-        // main.py에 이미 구현된 그 API 주소입니다.
-        string endpoint = $"{backendUrl}/usage-logs/recent/{currentUserId}";
+        if (isRequesting)
+            return;
 
-        using (UnityWebRequest request = UnityWebRequest.Get(endpoint))
-        {
-            yield return request.SendWebRequest();
-
-            if (request.result == UnityWebRequest.Result.Success)
-            {
-                string jsonResponse = request.downloadHandler.text;
-                UserUsageSummary summary = JsonConvert.DeserializeObject<UserUsageSummary>(jsonResponse);
-                Debug.Log("[GameManager] 1단계 성공: 백엔드에서 실제 데이터를 로드했습니다!");
-                onComplete?.Invoke(summary);
-            }
-            else
-            {
-                Debug.LogError($"[GameManager] 데이터 로드 실패: {request.error}\n{request.downloadHandler.text}");
-                onComplete?.Invoke(null); // 통신 실패 시 null 반환
-            }
-        }
+        StartCoroutine(RoutineDailyAIAnalysis());
     }
 
     private IEnumerator RoutineDailyAIAnalysis()
     {
         isRequesting = true;
 
-        // ==========================================================
-        // 1. 데이터 가져오기 (GET)
-        // ==========================================================
-        Debug.Log("[GameManager] 1단계: 백엔드에서 7일치 유저 데이터를 조회합니다...");
+        currentUserId = ResolveUserId();
 
-        UserUsageSummary userData = null;
-        yield return StartCoroutine(FetchUserDataFromBackend((result) => {
-            userData = result;
-        }));
-
-        // 통신이 실패했을 경우의 안전장치 (임시 0값)
-        if (userData == null)
+        if (currentUserId <= 0)
         {
-            Debug.LogWarning("[GameManager] DB 데이터를 가져오지 못해 임시 0값으로 진행합니다.");
-            userData = new UserUsageSummary
-            {
-                recent_7days_minutes = new int[] { 0, 0, 0, 0, 0, 0, 0 },
-                yesterday_minutes = 0,
-                yesterday_quest_completed = 0
-            };
+            Debug.LogError("[GameManager] USER_ID가 없습니다.");
+            isRequesting = false;
+            yield break;
         }
 
-        // ==========================================================
-        // 2. AI 매니저 분석 및 검산 (Google Gemini API 호출)
-        // ==========================================================
-        Debug.Log("[GameManager] 2단계: AI 분석 및 4중 검산 요청 시작...");
+        Debug.Log("[GameManager] 1단계: 사용시간 요약 조회");
 
-        AvailableQuest[] availableQuests = new AvailableQuest[]
+        UserUsageSummary usageSummary = null;
+
+        yield return StartCoroutine(FetchUserDataFromBackend(result =>
         {
-            new AvailableQuest { quest_id = 1, quest_type = "하" },
-            new AvailableQuest { quest_id = 2, quest_type = "하" },
-            new AvailableQuest { quest_id = 3, quest_type = "중" },
-            new AvailableQuest { quest_id = 4, quest_type = "중" },
-            new AvailableQuest { quest_id = 5, quest_type = "상" },
-            new AvailableQuest { quest_id = 6, quest_type = "공통" }
-        };
+            usageSummary = result;
+        }));
 
-        bool isAiFinished = false;
-        ValidatedResult finalResult = null;
+        int totalScreenMinutes = 0;
 
-        // 더미(가짜) 변수를 지우고, GET으로 받아온 실제 userData를 AI 매니저에 넘겨줍니다.
-        StartCoroutine(aiManager.RequestAIFeedback(
-            userData.recent_7days_minutes,
-            userData.yesterday_minutes,
-            userData.yesterday_quest_completed,
-            availableQuests,
-            (result) => {
-                finalResult = result;
-                isAiFinished = true;
+        if (usageSummary != null)
+        {
+            totalScreenMinutes = Mathf.Max(0, usageSummary.yesterday_minutes);
+        }
+        else
+        {
+            Debug.LogWarning("[GameManager] 사용시간 요약 조회 실패. total_screen_minutes=0으로 진행");
+        }
+
+        Debug.Log("[GameManager] 2단계: FastAPI AI 피드백 생성 요청");
+
+        AIFeedbackGenerateResponse feedbackResponse = null;
+
+        yield return StartCoroutine(GenerateAIFeedbackOnBackend(
+            totalScreenMinutes,
+            response =>
+            {
+                feedbackResponse = response;
             }
         ));
 
-        // AI 응답이 올 때까지 대기
-        yield return new WaitUntil(() => isAiFinished);
-        Debug.Log($"[GameManager] AI 분석 완료! 도출된 등급: {finalResult.Grade}");
+        if (feedbackResponse != null)
+        {
+            Debug.Log(
+                $"[GameManager] AI 피드백 완료 | " +
+                $"condition={feedbackResponse.condition_result}, " +
+                $"summary={feedbackResponse.pattern_summary}, " +
+                $"feedback={feedbackResponse.feedback_content}"
+            );
+        }
 
-        // ==========================================================
-        // 3. 분석 결과를 백엔드 DB에 저장 (POST)
-        // ==========================================================
-        Debug.Log("[GameManager] 3단계: 분석 결과를 FastAPI 백엔드에 저장합니다...");
-        yield return StartCoroutine(SaveAIFeedbackToBackend(finalResult));
+        QuestProgressReporter questReporter =
+            FindFirstObjectByType<QuestProgressReporter>();
+
+        if (questReporter != null)
+        {
+            questReporter.RefreshQuestBonus();
+        }
 
         isRequesting = false;
-        Debug.Log("[GameManager] 통신 사이클 종료. 다시 스페이스바를 눌러 테스트할 수 있습니다.");
     }
 
-    private IEnumerator SaveAIFeedbackToBackend(ValidatedResult result)
+    private IEnumerator FetchUserDataFromBackend(Action<UserUsageSummary> onComplete)
     {
-        string endpoint = $"{backendUrl}/ai-feedbacks/";
+        string endpoint = $"{backendUrl}/usage-logs/recent/{currentUserId}";
 
-        var payload = new
+        using (UnityWebRequest request = UnityWebRequest.Get(endpoint))
         {
-            user_id = currentUserId,
-            pattern_summary = result.Grade,
-            usage_score = result.Score,
-            condition_result = result.Condition,
-            feedback_content = result.Feedback,
-            assigned_quest_ids = result.QuestIds
+            yield return request.SendWebRequest();
+
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                Debug.LogError(
+                    $"[GameManager] 사용시간 요약 조회 실패\n" +
+                    $"HTTP {request.responseCode}\n" +
+                    $"{request.error}\n" +
+                    $"{request.downloadHandler.text}"
+                );
+
+                onComplete?.Invoke(null);
+                yield break;
+            }
+
+            try
+            {
+                UserUsageSummary summary =
+                    JsonConvert.DeserializeObject<UserUsageSummary>(
+                        request.downloadHandler.text
+                    );
+
+                onComplete?.Invoke(summary);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError(
+                    $"[GameManager] 사용시간 요약 JSON 파싱 실패: {e.Message}\n" +
+                    request.downloadHandler.text
+                );
+
+                onComplete?.Invoke(null);
+            }
+        }
+    }
+
+    private IEnumerator GenerateAIFeedbackOnBackend(
+        int totalScreenMinutes,
+        Action<AIFeedbackGenerateResponse> onComplete
+    )
+    {
+        string endpoint = $"{backendUrl}/users/{currentUserId}/ai-feedbacks/generate/";
+
+        AIFeedbackGenerateRequest body = new AIFeedbackGenerateRequest
+        {
+            total_screen_minutes = Mathf.Max(0, totalScreenMinutes)
         };
 
-        string jsonBody = JsonConvert.SerializeObject(payload);
+        string jsonBody = JsonConvert.SerializeObject(body);
 
         using (UnityWebRequest request = new UnityWebRequest(endpoint, "POST"))
         {
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonBody);
+
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
 
             yield return request.SendWebRequest();
 
-            if (request.result == UnityWebRequest.Result.Success)
+            if (request.result != UnityWebRequest.Result.Success)
             {
-                Debug.Log("[GameManager] 백엔드 저장 성공! DB 테이블이 업데이트 되었습니다.");
+                Debug.LogError(
+                    $"[GameManager] AI 피드백 생성 실패\n" +
+                    $"HTTP {request.responseCode}\n" +
+                    $"{request.error}\n" +
+                    $"{request.downloadHandler.text}"
+                );
+
+                onComplete?.Invoke(null);
+                yield break;
             }
-            else
+
+            try
             {
-                Debug.LogError($"[GameManager] 백엔드 전송 실패: {request.error}\n응답 본문: {request.downloadHandler.text}");
+                AIFeedbackGenerateResponse response =
+                    JsonConvert.DeserializeObject<AIFeedbackGenerateResponse>(
+                        request.downloadHandler.text
+                    );
+
+                onComplete?.Invoke(response);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError(
+                    $"[GameManager] AI 피드백 JSON 파싱 실패: {e.Message}\n" +
+                    request.downloadHandler.text
+                );
+
+                onComplete?.Invoke(null);
             }
         }
+    }
+
+    private int ResolveUserId()
+    {
+        if (CurrentUser.UserId > 0)
+            return CurrentUser.UserId;
+
+        int savedUserId = PlayerPrefs.GetInt(BattleRewardApi.USER_ID_KEY, -1);
+
+        if (savedUserId > 0)
+        {
+            CurrentUser.UserId = savedUserId;
+            return savedUserId;
+        }
+
+        return -1;
     }
 }

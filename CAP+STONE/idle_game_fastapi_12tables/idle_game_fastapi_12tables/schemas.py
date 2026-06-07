@@ -289,7 +289,8 @@ class PhoneUsageLogResponse(BaseModel):
 
 
 class QuestCreate(BaseModel):
-    quest_name: str
+    quest_type: str = "공통"
+    quest_event: str = "NONE"
     quest_description: Optional[str] = None
     is_condition_check: bool = False
     target_value: int
@@ -299,7 +300,8 @@ class QuestCreate(BaseModel):
 
 
 class QuestUpdate(BaseModel):
-    quest_name: Optional[str] = None
+    quest_type: Optional[str] = None
+    quest_event: Optional[str] = None
     quest_description: Optional[str] = None
     is_condition_check: Optional[bool] = None
     target_value: Optional[int] = None
@@ -310,7 +312,8 @@ class QuestUpdate(BaseModel):
 
 class QuestResponse(BaseModel):
     quest_id: int
-    quest_name: str
+    quest_type: str
+    quest_event: str
     quest_description: Optional[str] = None
     is_condition_check: bool
     target_value: int
@@ -322,10 +325,15 @@ class QuestResponse(BaseModel):
         from_attributes = True
 
 
+class QuestProgressRequest(BaseModel):
+    quest_event: str
+    add_value: int
+
+
 class UserQuestCreate(BaseModel):
     user_id: int
     quest_id: int
-    progress_value: int = 0
+    current_value: int = 0
     is_completed: bool = False
     is_reward_claimed: bool = False
     assigned_date: date
@@ -333,7 +341,7 @@ class UserQuestCreate(BaseModel):
 
 
 class UserQuestUpdate(BaseModel):
-    progress_value: Optional[int] = None
+    current_value: Optional[int] = None
     is_completed: Optional[bool] = None
     is_reward_claimed: Optional[bool] = None
     completed_at: Optional[datetime] = None
@@ -343,7 +351,7 @@ class UserQuestResponse(BaseModel):
     user_quest_id: int
     user_id: int
     quest_id: int
-    progress_value: int
+    current_value: int
     is_completed: bool
     is_reward_claimed: bool
     assigned_date: date
@@ -378,6 +386,7 @@ class AIFeedbackResponse(BaseModel):
     feedback_id: int
     user_id: int
     usage_log_id: Optional[int] = None
+
     feedback_content: str
     pattern_summary: Optional[str] = None
     previous_condition_quest_completed: int

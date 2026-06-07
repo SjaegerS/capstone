@@ -175,6 +175,14 @@ public class CharcterUpgrade : MonoBehaviour
 
                 ApplyUpgradeResponseToUI(response);
                 SetMessage($"{label} 강화 완료");
+
+                QuestProgressReporter questReporter =
+                FindFirstObjectByType<QuestProgressReporter>();
+
+                if (questReporter != null)
+                {
+                    questReporter.ReportProgress(QuestEvent.Stat, 1);
+                }
             }
         ));
     }
