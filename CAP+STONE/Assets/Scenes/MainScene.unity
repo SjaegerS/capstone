@@ -1907,7 +1907,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &193552073
 RectTransform:
   m_ObjectHideFlags: 0
@@ -2515,7 +2515,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4792066031241764937, guid: ad1309697828d40cf94a71770f850d73, type: 3}
       propertyPath: m_fontSize
-      value: 37.55
+      value: 18
       objectReference: {fileID: 0}
     - target: {fileID: 4792066031241764937, guid: ad1309697828d40cf94a71770f850d73, type: 3}
       propertyPath: m_fontSizeMax
@@ -2694,10 +2694,10 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 50
-  m_fontSizeBase: 36
+  m_fontSize: 34
+  m_fontSizeBase: 34
   m_fontWeight: 400
-  m_enableAutoSizing: 1
+  m_enableAutoSizing: 0
   m_fontSizeMin: 18
   m_fontSizeMax: 50
   m_fontStyle: 0
@@ -3940,7 +3940,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4792066031241764937, guid: ad1309697828d40cf94a71770f850d73, type: 3}
       propertyPath: m_fontSize
-      value: 37.55
+      value: 18
       objectReference: {fileID: 0}
     - target: {fileID: 4792066031241764937, guid: ad1309697828d40cf94a71770f850d73, type: 3}
       propertyPath: m_fontSizeMax
@@ -4114,6 +4114,76 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!1 &448916163
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 448916166}
+  - component: {fileID: 448916165}
+  - component: {fileID: 448916164}
+  m_Layer: 0
+  m_Name: LevelPanelSystem
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &448916164
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 448916163}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1b4bbc3163e874847a63c9d884ce08d8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LevelPanelController
+  levelPanelApi: {fileID: 448916165}
+  panelRoot: {fileID: 1594126291}
+  openButton: {fileID: 1212205125}
+  closeButton: {fileID: 0}
+  refreshButton: {fileID: 0}
+  userNameText: {fileID: 1423068799}
+  totalAttackText: {fileID: 520341645}
+  totalDefenseText: {fileID: 1569168812}
+  buffInfoText: {fileID: 0}
+  conditionScoreText: {fileID: 0}
+  aiFeedbackText: {fileID: 257556959}
+  messageText: {fileID: 0}
+--- !u!114 &448916165
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 448916163}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7e2fa7646cb416d428c78d2cc724e375, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LevelPanelApi
+  baseUrl: http://127.0.0.1:8000
+--- !u!4 &448916166
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 448916163}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 124.41523, y: 302.3382, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &456151113
 GameObject:
   m_ObjectHideFlags: 0
@@ -7006,7 +7076,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 921659412208554214, guid: e153129aeb36442f9b1f096b90975d7f, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4253311105256832677, guid: e153129aeb36442f9b1f096b90975d7f, type: 3}
       propertyPath: m_Pivot.x
@@ -17861,3 +17931,4 @@ SceneRoots:
   - {fileID: 1670778085}
   - {fileID: 1011944414}
   - {fileID: 1585057228}
+  - {fileID: 448916166}

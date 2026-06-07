@@ -48,8 +48,8 @@ public class QuestItemView : MonoBehaviour
         if (progressText != null)
             progressText.text = $"({current}/{target})";
 
-        bool hasGold = currentData.reward_gold > 0;
-        bool hasGem = currentData.reward_gem > 0;
+        bool hasGold = currentData.reward_gold >= 0;
+        bool hasGem = currentData.reward_gem >= 0;
 
         if (goldRewardIcon != null)
             goldRewardIcon.gameObject.SetActive(hasGold);

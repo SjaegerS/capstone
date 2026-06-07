@@ -47,6 +47,21 @@ public static class GameBalance
     public const float ActiveBuffBonus = 1.0f;
     public const float DefaultActiveBuffMultiplier = ActiveBuffBonus;
 
+    public enum ActivityBuffType
+    {
+        ACTIVITY,     // 활동형
+        RESTRAINT, // 절제형
+        QUEST,     // 퀘스트형
+        OFFLINE     // 종료형
+    }
+
+    public enum ConditionGrade
+    {
+        Normal,
+        Good,
+        Best
+    }
+
     public const float DefaultAttackSpeed = 1.2f;
     public const float PlayerMoveSpeed = 3.0f;
     public const float EnemyMoveSpeed = 2.0f;
@@ -398,6 +413,152 @@ public static class GameBalance
         subEffectMultiplier *= multiplier;
     }
 
+    public static ConditionGrade GetConditionGradeByScore(int conditionScore)
+    {
+        if (conditionScore >= 70)
+            return ConditionGrade.Best;
+
+        if (conditionScore >= 40)
+            return ConditionGrade.Good;
+
+        return ConditionGrade.Normal;
+    }
+
+    public static float GetActivityBuffPercent(ActivityBuffType buffType, ConditionGrade grade)
+    {
+        switch (buffType)
+        {
+            case ActivityBuffType.ACTIVITY:
+                return GetActiveBuffPercent(grade);
+
+            case ActivityBuffType.RESTRAINT:
+                return GetRestraintBuffPercent(grade);
+
+            case ActivityBuffType.QUEST:
+                return GetQuestBuffPercent(grade);
+
+            case ActivityBuffType.OFFLINE:
+                return GetEndingBuffPercent(grade);
+
+            default:
+                return 0f;
+        }
+    }
+
+    public static float GetActivityBuffMultiplier(ActivityBuffType buffType, ConditionGrade grade)
+    {
+        float percent = GetActivityBuffPercent(buffType, grade);
+        return 1f + percent / 100f;
+    }
+
+    public static float GetActivityBuffMultiplier(ActivityBuffType buffType, int conditionScore)
+    {
+        ConditionGrade grade = GetConditionGradeByScore(conditionScore);
+        return GetActivityBuffMultiplier(buffType, grade);
+    }
+
+    // 활동형: 보통 2%, 좋음 4%, 최상 6%
+    private static float GetActiveBuffPercent(ConditionGrade grade)
+    {
+        switch (grade)
+        {
+            case ConditionGrade.Normal:
+                return 2f;
+
+            case ConditionGrade.Good:
+                return 4f;
+
+            case ConditionGrade.Best:
+                return 6f;
+
+            default:
+                return 0f;
+        }
+    }
+
+    // 절제형: 보통 0%, 좋음 5%, 최상 10%
+    private static float GetRestraintBuffPercent(ConditionGrade grade)
+    {
+        switch (grade)
+        {
+            case ConditionGrade.Normal:
+                return 0f;
+
+            case ConditionGrade.Good:
+                return 5f;
+
+            case ConditionGrade.Best:
+                return 10f;
+
+            default:
+                return 0f;
+        }
+    }
+
+    // 퀘스트형: 보통 골드 +1%, 좋음 5%, 최상 10%
+    // 보석 증가는 normal 단계에서는 없음. 보석 보상 계산은 별도 메서드에서 처리.
+    private static float GetQuestBuffPercent(ConditionGrade grade)
+    {
+        switch (grade)
+        {
+            case ConditionGrade.Normal:
+                return 1f;
+
+            case ConditionGrade.Good:
+                return 5f;
+
+            case ConditionGrade.Best:
+                return 10f;
+
+            default:
+                return 0f;
+        }
+    }
+
+    // 종료형: 게임 종료 중 자동사냥 보상 증가
+    // 구체 수치가 아직 없으므로 임시값. 필요하면 여기만 수정.
+    private static float GetEndingBuffPercent(ConditionGrade grade)
+    {
+        switch (grade)
+        {
+            case ConditionGrade.Normal:
+                return 2f;
+
+            case ConditionGrade.Good:
+                return 5f;
+
+            case ConditionGrade.Best:
+                return 10f;
+
+            default:
+                return 0f;
+        }
+    }
+
+    public static int ApplyQuestGoldBuff(int baseGold, int conditionScore)
+    {
+        float multiplier = GetActivityBuffMultiplier(ActivityBuffType.QUEST, conditionScore);
+        return Mathf.RoundToInt(baseGold * multiplier);
+    }
+
+    public static int ApplyQuestGemBuff(int baseGem, int conditionScore)
+    {
+        ConditionGrade grade = GetConditionGradeByScore(conditionScore);
+
+        // 보통: 보석 증가 없음
+        if (grade == ConditionGrade.Normal)
+            return baseGem;
+
+        float multiplier = GetActivityBuffMultiplier(ActivityBuffType.QUEST, grade);
+        return Mathf.RoundToInt(baseGem * multiplier);
+    }
+
+    public static int ApplyEndingRewardBuff(int baseReward, int conditionScore)
+    {
+        float multiplier = GetActivityBuffMultiplier(ActivityBuffType.OFFLINE, conditionScore);
+        return Mathf.RoundToInt(baseReward * multiplier);
+    }
+
     private static string NormalizeGrade(string grade)
     {
         if (string.IsNullOrWhiteSpace(grade))
@@ -405,4 +566,7 @@ public static class GameBalance
 
         return grade.Trim().ToUpperInvariant().Replace("-", "_").Replace(" ", "_");
     }
+
+
+
 }
