@@ -1,9 +1,9 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-import models
 import schemas
 from database import get_db
 
@@ -14,105 +14,95 @@ router = APIRouter(
 )
 
 
-def _normalize_required_exp(user_status):
-    if user_status.required_exp is None or user_status.required_exp <= 0:
-        user_status.required_exp = 1000
+LEVEL_UP_GEM_REWARD = 500
 
 
-def _apply_player_exp(user_status, reward_exp: int):
-    reward_exp = max(0, reward_exp)
-
-    _normalize_required_exp(user_status)
-
-    if user_status.player_exp is None:
-        user_status.player_exp = 0
-
-    if user_status.player_level is None or user_status.player_level <= 0:
-        user_status.player_level = 1
-
-    user_status.player_exp += reward_exp
-
-    while user_status.player_exp >= user_status.required_exp:
-        user_status.player_exp -= user_status.required_exp
-        user_status.player_level += 1
-
-        # main.py의 calculate_required_exp와 같은 계열: 레벨당 약 16% 증가
-        user_status.required_exp = int(1000 * (1.16 ** (user_status.player_level - 1)))
+def calculate_required_exp(level: int) -> int:
+    safe_level = max(1, level)
+    return int(1000 * (1.16 ** (safe_level - 1)))
 
 
-def _battle_response(
-    *,
-    success: bool,
-    user_status,
-    user_currency,
-    message: str,
-    stage_id: int | None = None,
-    is_clear: bool | None = None,
-    reward_gold: int = 0,
-    reward_exp: int = 0,
-    kill_count_add: int = 0,
-):
-    """
-    Unity 쪽 호환을 위해 player_exp/player_level과 exp/level 둘 다 내려줌.
-    경험치바 코드가 exp를 보든 player_exp를 보든 둘 다 받을 수 있게 함.
-    """
+def get_user_status_row(db: Session, user_id: int):
+    row = db.execute(
+        text(
+            """
+            SELECT
+                us.user_id,
+                us.current_character_id,
 
-    response = {
-        "success": success,
-        "user_id": user_status.user_id,
-        "message": message,
+                us.player_level,
+                us.player_exp,
+                us.required_exp,
 
-        "current_stage": user_status.current_stage,
-        "max_cleared_stage": user_status.max_cleared_stage,
-        "total_boss_kill_count": user_status.total_boss_kill_count,
+                us.hp_upgrade_lvl,
+                us.attack_upgrade_lvl,
+                us.defense_upgrade_lvl,
 
-        "player_level": user_status.player_level,
-        "player_exp": user_status.player_exp,
-        "required_exp": user_status.required_exp,
+                us.max_hp,
+                us.attack_power,
+                us.defense_power,
 
-        # Unity 구버전 응답 클래스 호환용 alias
-        "level": user_status.player_level,
-        "exp": user_status.player_exp,
+                us.current_stage,
+                us.max_cleared_stage,
+                us.total_boss_kill_count,
+                us.updated_at,
 
-        "gold": user_currency.gold if user_currency else 0,
-        "gem": user_currency.gem if user_currency else 0,
-    }
+                ci.character_id,
+                ci.character_key,
+                ci.character_name,
 
-    if stage_id is not None:
-        response["stage_id"] = stage_id
+                COALESCE(uc.gold, 0) AS gold,
+                COALESCE(uc.gem, 0) AS gem
+            FROM user_status us
+            LEFT JOIN character_info ci
+                ON us.current_character_id = ci.character_id
+            LEFT JOIN user_currency uc
+                ON us.user_id = uc.user_id
+            WHERE us.user_id = :user_id
+            """
+        ),
+        {"user_id": user_id},
+    ).mappings().first()
 
-    if is_clear is not None:
-        response["is_clear"] = is_clear
-
-    response["reward_gold"] = reward_gold
-    response["reward_exp"] = reward_exp
-    response["kill_count_add"] = kill_count_add
-
-    return response
-
-
-@router.get(
-    "/status/{user_id}",
-    response_model=schemas.UserStatusResponse,
-)
-def get_user_battle_status(
-    user_id: int,
-    db: Session = Depends(get_db),
-):
-    user_status = (
-        db.query(models.UserStatus)
-        .options(joinedload(models.UserStatus.current_character))
-        .filter(models.UserStatus.user_id == user_id)
-        .first()
-    )
-
-    if user_status is None:
+    if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="유저 상태 정보를 찾을 수 없습니다.",
         )
 
-    return user_status
+    return row
+
+
+@router.get("/ping")
+def battle_ping():
+    return {
+        "success": True,
+        "message": "battle router connected",
+    }
+
+
+@router.get("/status/{user_id}")
+def get_user_battle_status(
+    user_id: int,
+    db: Session = Depends(get_db),
+):
+    row = get_user_status_row(db, user_id)
+    result = dict(row)
+
+    character_id = result.pop("character_id", None)
+    character_key = result.pop("character_key", None)
+    character_name = result.pop("character_name", None)
+
+    result["current_character"] = None
+
+    if character_id is not None:
+        result["current_character"] = {
+            "character_id": int(character_id),
+            "character_key": character_key,
+            "character_name": character_name,
+        }
+
+    return result
 
 
 @router.post("/challenge-stage/{user_id}")
@@ -120,63 +110,76 @@ def challenge_stage(
     user_id: int,
     db: Session = Depends(get_db),
 ):
-    user_status = (
-        db.query(models.UserStatus)
-        .filter(models.UserStatus.user_id == user_id)
-        .first()
-    )
+    """
+    도전 버튼을 눌렀을 때 호출.
 
-    if user_status is None:
+    current_stage를 1 증가시켜 다음 스테이지에 도전하게 한다.
+    실패하면 /battle/reward에서 max_cleared_stage 기준으로 복구한다.
+    """
+    try:
+        row = db.execute(
+            text(
+                """
+                SELECT
+                    user_id,
+                    current_stage,
+                    max_cleared_stage
+                FROM user_status
+                WHERE user_id = :user_id
+                """
+            ),
+            {"user_id": user_id},
+        ).mappings().first()
+
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="유저 상태 정보를 찾을 수 없습니다.",
+            )
+
+        current_stage = int(row["current_stage"] or 1)
+        max_cleared_stage = int(row["max_cleared_stage"] or 0)
+
+        challenge_stage_value = current_stage + 1
+
+        db.execute(
+            text(
+                """
+                UPDATE user_status
+                SET
+                    current_stage = :current_stage,
+                    updated_at = :updated_at
+                WHERE user_id = :user_id
+                """
+            ),
+            {
+                "user_id": user_id,
+                "current_stage": challenge_stage_value,
+                "updated_at": datetime.now(),
+            },
+        )
+
+        db.commit()
+
+        return {
+            "success": True,
+            "user_id": user_id,
+            "previous_stage": current_stage,
+            "current_stage": challenge_stage_value,
+            "max_cleared_stage": max_cleared_stage,
+            "can_challenge": True,
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except Exception as e:
+        db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="유저 상태 정보를 찾을 수 없습니다.",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"stage challenge 처리 중 서버 오류: {str(e)}",
         )
-
-    user_currency = (
-        db.query(models.UserCurrency)
-        .filter(models.UserCurrency.user_id == user_id)
-        .first()
-    )
-
-    if user_currency is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="유저 재화 정보를 찾을 수 없습니다.",
-        )
-
-    if user_status.current_stage is None or user_status.current_stage <= 0:
-        user_status.current_stage = 1
-
-    if user_status.max_cleared_stage is None or user_status.max_cleared_stage < 0:
-        user_status.max_cleared_stage = 0
-
-    _normalize_required_exp(user_status)
-
-    # 현재 스테이지가 아직 클리어되지 않은 상태면 다음 스테이지 도전 불가
-    # 예: current_stage=2, max_cleared_stage=1이면 2스테이지 도전 중/미클리어 상태
-    if user_status.current_stage > user_status.max_cleared_stage:
-        return _battle_response(
-            success=False,
-            user_status=user_status,
-            user_currency=user_currency,
-            message="현재 스테이지를 먼저 클리어해야 다음 스테이지에 도전할 수 있습니다.",
-        )
-
-    # 현재 스테이지를 이미 깬 상태면 도전 버튼으로만 다음 스테이지 이동
-    user_status.current_stage += 1
-    user_status.updated_at = datetime.now()
-    user_currency.updated_at = datetime.now()
-
-    db.commit()
-    db.refresh(user_status)
-    db.refresh(user_currency)
-
-    return _battle_response(
-        success=True,
-        user_status=user_status,
-        user_currency=user_currency,
-        message="다음 스테이지 도전 시작",
-    )
 
 
 @router.post("/reward")
@@ -184,101 +187,203 @@ def save_battle_reward(
     request: schemas.BattleRewardRequest,
     db: Session = Depends(get_db),
 ):
-    user_status = (
-        db.query(models.UserStatus)
-        .filter(models.UserStatus.user_id == request.user_id)
-        .first()
-    )
+    """
+    전투 결과 보상 저장.
 
-    if user_status is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="유저 상태 정보를 찾을 수 없습니다.",
+    성공:
+    - 골드 지급
+    - 경험치 지급
+    - 레벨업 처리
+    - 레벨업 1회당 젬 500 지급
+    - max_cleared_stage 갱신
+    - current_stage는 방금 깬 스테이지로 유지
+
+    실패:
+    - 보상 없음
+    - current_stage를 max_cleared_stage로 복구
+    - max_cleared_stage가 0이면 current_stage = 1
+    """
+    try:
+        status_row = db.execute(
+            text(
+                """
+                SELECT
+                    user_id,
+                    player_level,
+                    player_exp,
+                    required_exp,
+                    current_stage,
+                    max_cleared_stage,
+                    total_boss_kill_count
+                FROM user_status
+                WHERE user_id = :user_id
+                """
+            ),
+            {"user_id": request.user_id},
+        ).mappings().first()
+
+        if status_row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="유저 상태 정보를 찾을 수 없습니다.",
+            )
+
+        currency_row = db.execute(
+            text(
+                """
+                SELECT
+                    user_id,
+                    gold,
+                    gem
+                FROM user_currency
+                WHERE user_id = :user_id
+                """
+            ),
+            {"user_id": request.user_id},
+        ).mappings().first()
+
+        if currency_row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="유저 재화 정보를 찾을 수 없습니다.",
+            )
+
+        user_id = int(request.user_id)
+
+        player_level = int(status_row["player_level"] or 1)
+        player_exp = int(status_row["player_exp"] or 0)
+        required_exp = int(
+            status_row["required_exp"] or calculate_required_exp(player_level)
         )
 
-    user_currency = (
-        db.query(models.UserCurrency)
-        .filter(models.UserCurrency.user_id == request.user_id)
-        .first()
-    )
+        current_stage = int(status_row["current_stage"] or 1)
+        max_cleared_stage = int(status_row["max_cleared_stage"] or 0)
+        total_boss_kill_count = int(status_row["total_boss_kill_count"] or 0)
 
-    if user_currency is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="유저 재화 정보를 찾을 수 없습니다.",
+        gold = int(currency_row["gold"] or 0)
+        gem = int(currency_row["gem"] or 0)
+
+        request_stage = int(request.stage_id or current_stage)
+
+        reward_gold = 0
+        reward_exp = 0
+        reward_gem = 0
+        level_up_count = 0
+
+        if request.is_clear:
+            reward_gold = int(request.reward_gold or 0)
+            reward_exp = int(request.reward_exp or 0)
+
+            gold += reward_gold
+            player_exp += reward_exp
+            total_boss_kill_count += int(request.kill_count_add or 0)
+
+            while player_exp >= required_exp:
+                player_exp -= required_exp
+                player_level += 1
+                level_up_count += 1
+
+                reward_gem += LEVEL_UP_GEM_REWARD
+                required_exp = calculate_required_exp(player_level)
+
+            gem += reward_gem
+
+            if request_stage > max_cleared_stage:
+                max_cleared_stage = request_stage
+
+            current_stage = request_stage
+
+        else:
+            current_stage = max(1, max_cleared_stage)
+
+            reward_gold = 0
+            reward_exp = 0
+            reward_gem = 0
+
+        now = datetime.now()
+
+        db.execute(
+            text(
+                """
+                UPDATE user_status
+                SET
+                    player_level = :player_level,
+                    player_exp = :player_exp,
+                    required_exp = :required_exp,
+                    current_stage = :current_stage,
+                    max_cleared_stage = :max_cleared_stage,
+                    total_boss_kill_count = :total_boss_kill_count,
+                    updated_at = :updated_at
+                WHERE user_id = :user_id
+                """
+            ),
+            {
+                "user_id": user_id,
+                "player_level": player_level,
+                "player_exp": player_exp,
+                "required_exp": required_exp,
+                "current_stage": current_stage,
+                "max_cleared_stage": max_cleared_stage,
+                "total_boss_kill_count": total_boss_kill_count,
+                "updated_at": now,
+            },
         )
 
-    if user_status.current_stage is None or user_status.current_stage <= 0:
-        user_status.current_stage = 1
-
-    if user_status.max_cleared_stage is None or user_status.max_cleared_stage < 0:
-        user_status.max_cleared_stage = 0
-
-    if user_status.total_boss_kill_count is None:
-        user_status.total_boss_kill_count = 0
-
-    _normalize_required_exp(user_status)
-
-    # 패배 처리
-    # 못 깨면 이전 클리어 스테이지로 복귀
-    # 단, max_cleared_stage가 0이면 최소 1스테이지로 유지
-    if request.is_clear is False:
-        user_status.current_stage = max(1, user_status.max_cleared_stage)
-
-        user_status.updated_at = datetime.now()
-        user_currency.updated_at = datetime.now()
+        db.execute(
+            text(
+                """
+                UPDATE user_currency
+                SET
+                    gold = :gold,
+                    gem = :gem,
+                    updated_at = :updated_at
+                WHERE user_id = :user_id
+                """
+            ),
+            {
+                "user_id": user_id,
+                "gold": gold,
+                "gem": gem,
+                "updated_at": now,
+            },
+        )
 
         db.commit()
-        db.refresh(user_status)
-        db.refresh(user_currency)
 
-        return _battle_response(
-            success=True,
-            user_status=user_status,
-            user_currency=user_currency,
-            stage_id=request.stage_id,
-            is_clear=False,
-            message="패배 처리 완료. 이전 스테이지로 복귀했습니다.",
-            reward_gold=0,
-            reward_exp=0,
-            kill_count_add=0,
+        return {
+            "success": True,
+            "user_id": user_id,
+            "is_clear": bool(request.is_clear),
+
+            "player_level": player_level,
+            "player_exp": player_exp,
+            "required_exp": required_exp,
+
+            "level": player_level,
+            "exp": player_exp,
+
+            "gold": gold,
+            "gem": gem,
+
+            "reward_gold": reward_gold,
+            "reward_exp": reward_exp,
+            "reward_gem": reward_gem,
+
+            "level_up": level_up_count > 0,
+            "level_up_count": level_up_count,
+
+            "current_stage": current_stage,
+            "max_cleared_stage": max_cleared_stage,
+            "total_boss_kill_count": total_boss_kill_count,
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"battle reward 처리 중 서버 오류: {str(e)}",
         )
-
-    # 승리 처리
-    # 여기서는 current_stage를 절대 +1 하지 않음
-    # 도전 버튼을 눌렀을 때만 다음 스테이지로 이동해야 함
-
-    user_currency.gold += request.reward_gold
-
-    _apply_player_exp(
-        user_status=user_status,
-        reward_exp=request.reward_exp,
-    )
-
-    user_status.total_boss_kill_count += request.kill_count_add
-
-    if request.stage_id > user_status.max_cleared_stage:
-        user_status.max_cleared_stage = request.stage_id
-
-    # 승리한 스테이지를 현재 스테이지로 유지
-    # 이래야 "깬 스테이지 반복" 가능
-    user_status.current_stage = request.stage_id
-
-    user_status.updated_at = datetime.now()
-    user_currency.updated_at = datetime.now()
-
-    db.commit()
-    db.refresh(user_status)
-    db.refresh(user_currency)
-
-    return _battle_response(
-        success=True,
-        user_status=user_status,
-        user_currency=user_currency,
-        stage_id=request.stage_id,
-        is_clear=True,
-        message="전투 보상 저장 완료",
-        reward_gold=request.reward_gold,
-        reward_exp=request.reward_exp,
-        kill_count_add=request.kill_count_add,
-    )
