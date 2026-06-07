@@ -197,6 +197,7 @@ public class AIManager : MonoBehaviour
                                          AvailableQuest[] availableQuests,
                                          System.Action<ValidatedResult> onComplete = null)
     {
+        Debug.Log($"[AIManager 입력값 확인] 7일 평균: {recent7Days.Average()} / 어제 사용량: {yesterday}");
         if (string.IsNullOrEmpty(apiKey))
         {
             Debug.LogError("[AIManager] apiKey 미설정. 인스펙터 또는 외부 주입 필요.");
