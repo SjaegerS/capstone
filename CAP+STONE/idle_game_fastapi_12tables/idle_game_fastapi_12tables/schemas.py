@@ -71,6 +71,22 @@ class UserLevelStatusResponse(BaseModel):
     required_exp: int
     gem: int
 
+class UserLevelPanelResponse(BaseModel):
+    success: bool
+    user_id: int
+    user_name: str
+
+    base_attack: int
+    base_defense: int
+
+    equipment_attack: int
+    equipment_defense: int
+
+    equipment_attack_sub_multiplier: float
+    equipment_defense_sub_multiplier: float
+
+    latest_feedback_content: Optional[str] = None
+
 
 class UserStatUpgradeResponse(BaseModel):
     user_id: int
@@ -341,7 +357,7 @@ class UserQuestCreate(BaseModel):
 
 
 class UserQuestUpdate(BaseModel):
-    current_value: Optional[int] = None
+    progress_value: Optional[int] = None
     is_completed: Optional[bool] = None
     is_reward_claimed: Optional[bool] = None
     completed_at: Optional[datetime] = None

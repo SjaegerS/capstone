@@ -193,7 +193,7 @@ def decide_condition_result(
     else:
         quest_grade_score = 3
 
-    final_score = usage_grade_score
+    final_score = min(usage_grade_score, quest_grade_score)
 
     if final_score >= 3:
         return "BEST"
@@ -1408,20 +1408,14 @@ def get_today_quests_for_unity(
         "사용자를 찾을 수 없습니다.",
     )
 
-    today_quests = get_today_user_quests(db, user_id)
+    condition_result = get_latest_condition_result(db, user_id)
 
-    if len(today_quests) == 0:
-        condition_result = get_latest_condition_result(db, user_id)
-
-        assign_today_quests_by_condition(
-            db=db,
-            user_id=user_id,
-            condition_result=condition_result,
-            limit=4,
-        )
-
-        db.commit()
-        today_quests = get_today_user_quests(db, user_id)
+    assign_today_quests_by_condition(
+        db=db,
+        user_id=user_id,
+        condition_result=condition_result,
+        limit=4,
+    )
 
     refresh_quest_bonus_progress(db, user_id)
     db.commit()
@@ -1557,11 +1551,14 @@ def claim_quest_reward_for_unity(
     user_quest_id: int,
     db: Session = Depends(get_db),
 ):
-    user_quest = (
+    user_quests = (
         db.query(models.UserQuest)
-        .options(joinedload(models.UserQuest.quest))
-        .filter(models.UserQuest.user_quest_id == user_quest_id)
-        .first()
+        .filter(
+            models.UserQuest.user_id == user_id,
+            models.UserQuest.assigned_date == date.today(),
+        )
+        .order_by(models.UserQuest.user_quest_id.asc())
+        .all()
     )
 
     if user_quest is None:
@@ -1824,73 +1821,87 @@ def assign_today_quests_by_condition(
     limit: int = 4,
 ):
     """
-    오늘 퀘스트가 없을 때만 생성.
-    일반 퀘스트 limit개 + Quest 보너스 퀘스트 1개를 할당한다.
+    오늘 일반 퀘스트가 없으면 일반 퀘스트를 생성하고,
+    Quest 보너스 퀘스트가 없으면 별도로 보장한다.
     """
     today = date.today()
 
-    existing_count = (
+    allowed_types = normalize_condition_to_quest_types(condition_result)
+
+    normal_existing_count = (
         db.query(models.UserQuest)
+        .join(models.Quest, models.UserQuest.quest_id == models.Quest.quest_id)
         .filter(
             models.UserQuest.user_id == user_id,
             models.UserQuest.assigned_date == today,
+            func.upper(models.Quest.quest_event) != QUEST_EVENT_QUEST,
         )
         .count()
     )
 
-    if existing_count > 0:
-        return
-
-    allowed_types = normalize_condition_to_quest_types(condition_result)
-
-    normal_quests = (
-        db.query(models.Quest)
-        .filter(
-            models.Quest.is_active == True,
-            models.Quest.quest_type.in_(allowed_types),
-            func.upper(models.Quest.quest_event) != QUEST_EVENT_QUEST,
+    if normal_existing_count == 0:
+        normal_quests = (
+            db.query(models.Quest)
+            .filter(
+                models.Quest.is_active == True,
+                models.Quest.quest_type.in_(allowed_types),
+                func.upper(models.Quest.quest_event) != QUEST_EVENT_QUEST,
+            )
+            .order_by(
+                models.Quest.quest_type.asc(),
+                models.Quest.quest_id.asc(),
+            )
+            .limit(limit)
+            .all()
         )
-        .order_by(
-            models.Quest.quest_type.asc(),
-            models.Quest.quest_id.asc(),
-        )
-        .limit(limit)
-        .all()
-    )
 
-    bonus_quest = (
-        db.query(models.Quest)
+        for quest in normal_quests:
+            db.add(
+                models.UserQuest(
+                    user_id=user_id,
+                    quest_id=quest.quest_id,
+                    current_value=0,
+                    is_completed=False,
+                    is_reward_claimed=False,
+                    assigned_date=today,
+                    completed_at=None,
+                )
+            )
+
+    bonus_existing = (
+        db.query(models.UserQuest)
+        .join(models.Quest, models.UserQuest.quest_id == models.Quest.quest_id)
         .filter(
-            models.Quest.is_active == True,
+            models.UserQuest.user_id == user_id,
+            models.UserQuest.assigned_date == today,
             func.upper(models.Quest.quest_event) == QUEST_EVENT_QUEST,
         )
-        .order_by(models.Quest.quest_id.asc())
         .first()
     )
 
-    quests = list(normal_quests)
-
-    if bonus_quest is not None:
-        quests.append(bonus_quest)
-
-    if len(quests) == 0:
-        raise HTTPException(
-            status_code=404,
-            detail=f"{condition_result} 조건에 맞는 활성 퀘스트가 없습니다.",
-        )
-
-    for quest in quests:
-        db.add(
-            models.UserQuest(
-                user_id=user_id,
-                quest_id=quest.quest_id,
-                current_value=0,
-                is_completed=False,
-                is_reward_claimed=False,
-                assigned_date=today,
-                completed_at=None,
+    if bonus_existing is None:
+        bonus_quest = (
+            db.query(models.Quest)
+            .filter(
+                models.Quest.is_active == True,
+                func.upper(models.Quest.quest_event) == QUEST_EVENT_QUEST,
             )
+            .order_by(models.Quest.quest_id.asc())
+            .first()
         )
+
+        if bonus_quest is not None:
+            db.add(
+                models.UserQuest(
+                    user_id=user_id,
+                    quest_id=bonus_quest.quest_id,
+                    current_value=0,
+                    is_completed=False,
+                    is_reward_claimed=False,
+                    assigned_date=today,
+                    completed_at=None,
+                )
+            )
 
 
 def grant_quest_reward_if_needed(
@@ -2332,41 +2343,80 @@ def _get_latest_ai_condition_or_default(user_id: int, db):
 
 def _assign_today_quests_if_empty(user_id: int, db):
     """
-    user_quest에 해당 유저 퀘스트가 없으면
-    quest_type이 중 / 상 / 공통인 active 퀘스트만 자동 할당.
+    QuestPopupController용 퀘스트 자동 할당.
+    오늘 퀘스트가 없으면 일반 퀘스트를 생성하고,
+    일일 퀘스트 완료(QUEST)는 없으면 항상 추가한다.
     """
 
-    existing_count = (
-        db.query(models.UserQuest)
-        .filter(models.UserQuest.user_id == user_id)
-        .count()
-    )
-
-    if existing_count > 0:
-        return
+    today = date.today()
 
     _seed_default_quests_if_empty(db)
 
-    quests = (
-        db.query(models.Quest)
-        .filter(models.Quest.is_active == True)
-        .filter(models.Quest.quest_type.in_(["중", "상", "공통"]))
-        .all()
+    existing_normal_count = (
+        db.query(models.UserQuest)
+        .join(models.Quest, models.UserQuest.quest_id == models.Quest.quest_id)
+        .filter(
+            models.UserQuest.user_id == user_id,
+            models.UserQuest.assigned_date == today,
+            func.upper(func.trim(models.Quest.quest_event)) != "QUEST",
+        )
+        .count()
     )
 
-    for quest in quests:
-        user_quest = _create_model_instance(
-            models.UserQuest,
-            user_id=user_id,
-            quest_id=quest.quest_id,
-            current_value=0,
-            is_completed=False,
-            is_reward_claimed=False,
-            assigned_date=date.today(),
+    if existing_normal_count == 0:
+        quests = (
+            db.query(models.Quest)
+            .filter(models.Quest.is_active == True)
+            .filter(models.Quest.quest_type.in_(["중", "상", "공통", "GOOD", "BEST", "COMMON"]))
+            .filter(func.upper(func.trim(models.Quest.quest_event)) != "QUEST")
+            .order_by(models.Quest.quest_id.asc())
+            .all()
         )
-        db.add(user_quest)
 
-    db.commit()
+        for quest in quests:
+            user_quest = _create_model_instance(
+                models.UserQuest,
+                user_id=user_id,
+                quest_id=quest.quest_id,
+                current_value=0,
+                is_completed=False,
+                is_reward_claimed=False,
+                assigned_date=today,
+            )
+            db.add(user_quest)
+
+    existing_bonus = (
+        db.query(models.UserQuest)
+        .join(models.Quest, models.UserQuest.quest_id == models.Quest.quest_id)
+        .filter(
+            models.UserQuest.user_id == user_id,
+            models.UserQuest.assigned_date == today,
+            func.upper(func.trim(models.Quest.quest_event)) == "QUEST",
+        )
+        .first()
+    )
+
+    if existing_bonus is None:
+        bonus_quest = (
+            db.query(models.Quest)
+            .filter(models.Quest.is_active == True)
+            .filter(func.upper(func.trim(models.Quest.quest_event)) == "QUEST")
+            .order_by(models.Quest.quest_id.asc())
+            .first()
+        )
+
+        if bonus_quest is not None:
+            bonus_user_quest = _create_model_instance(
+                models.UserQuest,
+                user_id=user_id,
+                quest_id=bonus_quest.quest_id,
+                current_value=0,
+                is_completed=False,
+                is_reward_claimed=False,
+                assigned_date=today,
+            )
+            db.add(bonus_user_quest)
+
 
 
 @app.get("/users/{user_id}/quests/popup")
@@ -2391,6 +2441,9 @@ def get_user_quest_popup(user_id: int, db: Session = Depends(get_db)):
     quest_score = DEFAULT_QUEST_SCORE
 
     _assign_today_quests_if_empty(user_id, db)
+
+    refresh_quest_bonus_progress(db, user_id)
+    db.commit()
 
     user_quests = (
         db.query(models.UserQuest)
@@ -2514,6 +2567,148 @@ def create_today_user_buffs(user_id: int, db: Session = Depends(get_db)):
         "user_id": user_id,
     }
 
+@app.get("/users/{user_id}/level-panel")
+def get_user_level_panel(
+    user_id: int,
+    db: Session = Depends(get_db),
+):
+    user = (
+        db.query(models.User)
+        .filter(models.User.user_id == user_id)
+        .first()
+    )
+
+    if user is None:
+        raise HTTPException(
+            status_code=404,
+            detail="유저를 찾을 수 없습니다.",
+        )
+
+    user_status = (
+        db.query(models.UserStatus)
+        .filter(models.UserStatus.user_id == user_id)
+        .first()
+    )
+
+    if user_status is None:
+        raise HTTPException(
+            status_code=404,
+            detail="유저 상태 정보를 찾을 수 없습니다.",
+        )
+
+    equipped_items = (
+        db.query(models.UserItem, models.Item)
+        .join(models.Item, models.UserItem.item_id == models.Item.item_id)
+        .filter(
+            models.UserItem.user_id == user_id,
+            models.UserItem.is_equipped == True,
+        )
+        .all()
+    )
+
+    weapon_base_attack = 0
+    armor_base_defense = 0
+
+    weapon_enhance_level = 1
+    armor_enhance_level = 1
+
+    for user_item, item in equipped_items:
+        item_type = normalize_item_type_for_level_panel(item.item_type)
+
+        if item_type == "WEAPON":
+            weapon_base_attack = int(item.base_attack or 0)
+            weapon_enhance_level = int(user_item.enhance_level or 1)
+
+        elif item_type == "ARMOR":
+            armor_base_defense = int(item.base_defense or 0)
+            armor_enhance_level = int(user_item.enhance_level or 1)
+
+    activity_buff = (
+        db.execute(
+            text(
+                """
+                SELECT
+                    ub.buff_type,
+                    ub.condition_score,
+                    ub.current_effect_value,
+                    bi.condition_grade
+                FROM user_buff ub
+                JOIN buff_info bi
+                    ON ub.buff_id = bi.buff_id
+                WHERE ub.user_id = :user_id
+                  AND ub.is_active = 1
+                  AND ub.buff_type = 'ACTIVITY'
+                  AND ub.buff_date = CURRENT_DATE
+                ORDER BY ub.updated_at DESC
+                LIMIT 1
+                """
+            ),
+            {"user_id": user_id},
+        )
+        .mappings()
+        .first()
+    )
+
+    condition_score = 100
+    condition_grade = "BEST"
+    buff_type = "ACTIVITY"
+    current_effect_value = 0.0
+
+    if activity_buff is not None:
+        condition_score = int(activity_buff["condition_score"] or 100)
+        condition_grade = activity_buff["condition_grade"] or "BEST"
+        buff_type = activity_buff["buff_type"] or "ACTIVITY"
+        current_effect_value = float(activity_buff["current_effect_value"] or 0.0)
+
+    latest_feedback = (
+        db.query(models.AIFeedbackLog)
+        .filter(models.AIFeedbackLog.user_id == user_id)
+        .order_by(models.AIFeedbackLog.created_at.desc())
+        .first()
+    )
+
+    latest_feedback_content = None
+
+    if latest_feedback is not None:
+        latest_feedback_content = latest_feedback.feedback_content
+
+    return {
+        "success": True,
+        "user_id": int(user.user_id),
+        "user_name": user.nickname,
+
+        "base_attack": int(user_status.attack_power or 20),
+        "base_defense": int(user_status.defense_power or 20),
+
+        "weapon_base_attack": weapon_base_attack,
+        "armor_base_defense": armor_base_defense,
+
+        "weapon_enhance_level": weapon_enhance_level,
+        "armor_enhance_level": armor_enhance_level,
+
+        "condition_score": condition_score,
+        "condition_grade": condition_grade,
+
+        "buff_type": buff_type,
+        "current_effect_value": current_effect_value,
+
+        "latest_feedback_content": latest_feedback_content,
+    }
+
+
+def normalize_item_type_for_level_panel(item_type: str) -> str:
+    if item_type is None:
+        return ""
+
+    return item_type.strip().upper().replace("-", "_").replace(" ", "_")
+
+
+def normalize_item_type_for_level_panel(item_type: str) -> str:
+    if item_type is None:
+        return ""
+
+    return item_type.strip().upper().replace("-", "_").replace(" ", "_")
+
 
 # ======================================================
 # Test / Reset
@@ -2583,35 +2778,29 @@ def create_ai_feedback(feedback_data: schemas.AIFeedbackCreate, db: Session = De
     )
     db.add(new_feedback)
 
-    # 2. user_quest 재할당
-    #    재분석 시 이전 결과 퀘스트가 남아 새 결과와 섞이는 문제 방지.
-    #    "오늘 날짜 + 해당 유저"의 기존 퀘스트를 먼저 비우고 새로 넣는다.
+    # 2. user_quest 테이블에 할당 (중복 체크 추가)
     today = date.today()
-
-    # 2-1. 오늘 발급분 삭제 (과거 날짜 기록은 보존)
-    #      완료/보상받은 오늘 퀘스트도 함께 지워지는 점에 유의.
-    #      (재분석은 같은 날 테스트 상황 가정. 완료 기록 보존이 필요하면 아래 주석의 조건 추가)
-    db.query(models.UserQuest).filter(
-        models.UserQuest.user_id == feedback_data.user_id,
-        models.UserQuest.assigned_date == today
-        # 완료/보상받은 퀘스트는 남기려면 아래 줄의 주석을 해제:
-        # , models.UserQuest.is_completed == False
-        # , models.UserQuest.is_reward_claimed == False
-    ).delete(synchronize_session=False)
-
-    # 2-2. 이번 분석 결과로 새로 할당
     for q_id in feedback_data.assigned_quest_ids:
-        new_user_quest = models.UserQuest(
-            user_id=feedback_data.user_id,
-            quest_id=q_id,
-            current_value=0,
-            is_completed=False,
-            is_reward_claimed=False,
-            assigned_date=today
-        )
-        db.add(new_user_quest)
+        # 이미 오늘 날짜로 발급된 퀘스트인지 DB에서 확인
+        existing_quest = db.query(models.UserQuest).filter(
+            models.UserQuest.user_id == feedback_data.user_id,
+            models.UserQuest.quest_id == q_id,
+            models.UserQuest.assigned_date == today
+        ).first()
+
+        # 오늘 발급된 기록이 없을 때만 새로 추가 (Duplicate 에러 방지)
+        if not existing_quest:
+            new_user_quest = models.UserQuest(
+                user_id=feedback_data.user_id,
+                quest_id=q_id,
+                current_value=0,
+                is_completed=False,
+                is_reward_claimed=False,
+                assigned_date=today
+            )
+            db.add(new_user_quest)
 
     # 3. 변경사항 확정 (DB Commit)
     db.commit()
 
-    return {"status": "success", "message": "AI 피드백 로깅 및 퀘스트 재할당이 완료되었습니다."}
+    return {"status": "success", "message": "AI 피드백 로깅 및 퀘스트 할당이 성공적으로 완료되었습니다."}
