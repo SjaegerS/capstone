@@ -13464,7 +13464,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameManager
   backendUrl: http://127.0.0.1:8000
-  triggerWithSpaceKey: 1
+  aiManager: {fileID: 574537099}
 --- !u!4 &1670778085
 Transform:
   m_ObjectHideFlags: 0

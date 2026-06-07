@@ -193,7 +193,7 @@ def decide_condition_result(
     else:
         quest_grade_score = 3
 
-    final_score = min(usage_grade_score, quest_grade_score)
+    final_score = usage_grade_score
 
     if final_score >= 3:
         return "BEST"
@@ -2583,29 +2583,35 @@ def create_ai_feedback(feedback_data: schemas.AIFeedbackCreate, db: Session = De
     )
     db.add(new_feedback)
 
-    # 2. user_quest 테이블에 할당 (중복 체크 추가)
+    # 2. user_quest 재할당
+    #    재분석 시 이전 결과 퀘스트가 남아 새 결과와 섞이는 문제 방지.
+    #    "오늘 날짜 + 해당 유저"의 기존 퀘스트를 먼저 비우고 새로 넣는다.
     today = date.today()
-    for q_id in feedback_data.assigned_quest_ids:
-        # 이미 오늘 날짜로 발급된 퀘스트인지 DB에서 확인
-        existing_quest = db.query(models.UserQuest).filter(
-            models.UserQuest.user_id == feedback_data.user_id,
-            models.UserQuest.quest_id == q_id,
-            models.UserQuest.assigned_date == today
-        ).first()
 
-        # 오늘 발급된 기록이 없을 때만 새로 추가 (Duplicate 에러 방지)
-        if not existing_quest:
-            new_user_quest = models.UserQuest(
-                user_id=feedback_data.user_id,
-                quest_id=q_id,
-                current_value=0,
-                is_completed=False,
-                is_reward_claimed=False,
-                assigned_date=today
-            )
-            db.add(new_user_quest)
+    # 2-1. 오늘 발급분 삭제 (과거 날짜 기록은 보존)
+    #      완료/보상받은 오늘 퀘스트도 함께 지워지는 점에 유의.
+    #      (재분석은 같은 날 테스트 상황 가정. 완료 기록 보존이 필요하면 아래 주석의 조건 추가)
+    db.query(models.UserQuest).filter(
+        models.UserQuest.user_id == feedback_data.user_id,
+        models.UserQuest.assigned_date == today
+        # 완료/보상받은 퀘스트는 남기려면 아래 줄의 주석을 해제:
+        # , models.UserQuest.is_completed == False
+        # , models.UserQuest.is_reward_claimed == False
+    ).delete(synchronize_session=False)
+
+    # 2-2. 이번 분석 결과로 새로 할당
+    for q_id in feedback_data.assigned_quest_ids:
+        new_user_quest = models.UserQuest(
+            user_id=feedback_data.user_id,
+            quest_id=q_id,
+            current_value=0,
+            is_completed=False,
+            is_reward_claimed=False,
+            assigned_date=today
+        )
+        db.add(new_user_quest)
 
     # 3. 변경사항 확정 (DB Commit)
     db.commit()
 
-    return {"status": "success", "message": "AI 피드백 로깅 및 퀘스트 할당이 성공적으로 완료되었습니다."}
+    return {"status": "success", "message": "AI 피드백 로깅 및 퀘스트 재할당이 완료되었습니다."}

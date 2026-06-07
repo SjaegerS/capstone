@@ -24,7 +24,7 @@ public class AIFeedbackGenerateResponse
 {
     public int feedback_id;
     public int user_id;
-    public int usage_log_id;
+    public int? usage_log_id;
 
     public string feedback_content;
     public string pattern_summary;
@@ -38,9 +38,8 @@ public class GameManager : MonoBehaviour
     [Header("Backend")]
     [SerializeField] private string backendUrl = "http://127.0.0.1:8000";
 
-    [Header("Test")]
-    [SerializeField] private bool triggerWithSpaceKey = true;
-
+    [Header("매니저 연결")]
+    public AIManager aiManager;
     private int currentUserId;
     private bool isRequesting;
 
@@ -49,23 +48,13 @@ public class GameManager : MonoBehaviour
         currentUserId = ResolveUserId();
 
         Debug.Log(
-            $"[GameManager] 준비 완료 | USER_ID={currentUserId}, " +
-            $"Space 테스트={triggerWithSpaceKey}"
+            $"[GameManager] 준비 완료 | USER_ID={currentUserId}, " 
         );
+
+        // 스페이스바 입력 대기 없이 게임 시작과 동시에 코루틴 실행
+        StartCoroutine(RoutineDailyAIAnalysis());
     }
 
-    private void Update()
-    {
-        if (!triggerWithSpaceKey)
-            return;
-
-        if (Keyboard.current != null &&
-            Keyboard.current.spaceKey.wasPressedThisFrame &&
-            !isRequesting)
-        {
-            StartCoroutine(RoutineDailyAIAnalysis());
-        }
-    }
 
     public void RunDailyAIAnalysis()
     {
@@ -108,27 +97,37 @@ public class GameManager : MonoBehaviour
             Debug.LogWarning("[GameManager] 사용시간 요약 조회 실패. total_screen_minutes=0으로 진행");
         }
 
-        Debug.Log("[GameManager] 2단계: FastAPI AI 피드백 생성 요청");
+        Debug.Log("[GameManager] 2단계: AI 분석 및 4중 검산 요청 시작...");
 
-        AIFeedbackGenerateResponse feedbackResponse = null;
+        AvailableQuest[] availableQuests = new AvailableQuest[]
+        {
+            new AvailableQuest { quest_id = 1, quest_type = "하" },
+            new AvailableQuest { quest_id = 2, quest_type = "하" },
+            new AvailableQuest { quest_id = 3, quest_type = "중" },
+            new AvailableQuest { quest_id = 4, quest_type = "중" },
+            new AvailableQuest { quest_id = 5, quest_type = "상" },
+            new AvailableQuest { quest_id = 6, quest_type = "공통" }
+        };
 
-        yield return StartCoroutine(GenerateAIFeedbackOnBackend(
+        bool isAiFinished = false;
+        ValidatedResult finalResult = null;
+
+        yield return StartCoroutine(aiManager.RequestAIFeedback(
+            usageSummary != null ? usageSummary.recent_7days_minutes : new int[7],
             totalScreenMinutes,
-            response =>
-            {
-                feedbackResponse = response;
+            usageSummary != null ? usageSummary.yesterday_quest_completed : 0,
+            availableQuests,
+            (result) => {
+                finalResult = result;
+                isAiFinished = true;
             }
         ));
 
-        if (feedbackResponse != null)
-        {
-            Debug.Log(
-                $"[GameManager] AI 피드백 완료 | " +
-                $"condition={feedbackResponse.condition_result}, " +
-                $"summary={feedbackResponse.pattern_summary}, " +
-                $"feedback={feedbackResponse.feedback_content}"
-            );
-        }
+        yield return new WaitUntil(() => isAiFinished);
+        Debug.Log($"[GameManager] AI 분석 완료! 도출된 등급: {finalResult.Grade}");
+
+        // 3단계: 분석 결과를 백엔드 DB에 저장 (POST)
+        yield return StartCoroutine(SaveAIFeedbackToBackend(finalResult));
 
         QuestProgressReporter questReporter =
             FindFirstObjectByType<QuestProgressReporter>();
@@ -183,24 +182,25 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    private IEnumerator GenerateAIFeedbackOnBackend(
-        int totalScreenMinutes,
-        Action<AIFeedbackGenerateResponse> onComplete
-    )
+    private IEnumerator SaveAIFeedbackToBackend(ValidatedResult result)
     {
-        string endpoint = $"{backendUrl}/users/{currentUserId}/ai-feedbacks/generate/";
+        string endpoint = $"{backendUrl}/ai-feedbacks/";
 
-        AIFeedbackGenerateRequest body = new AIFeedbackGenerateRequest
+        var payload = new
         {
-            total_screen_minutes = Mathf.Max(0, totalScreenMinutes)
+            user_id = currentUserId,
+            pattern_summary = result.Grade,
+            usage_score = result.Score,
+            condition_result = result.Condition,
+            feedback_content = result.Feedback,
+            assigned_quest_ids = result.QuestIds
         };
 
-        string jsonBody = JsonConvert.SerializeObject(body);
+        string jsonBody = JsonConvert.SerializeObject(payload);
 
         using (UnityWebRequest request = new UnityWebRequest(endpoint, "POST"))
         {
             byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonBody);
-
             request.uploadHandler = new UploadHandlerRaw(bodyRaw);
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
@@ -209,34 +209,11 @@ public class GameManager : MonoBehaviour
 
             if (request.result != UnityWebRequest.Result.Success)
             {
-                Debug.LogError(
-                    $"[GameManager] AI 피드백 생성 실패\n" +
-                    $"HTTP {request.responseCode}\n" +
-                    $"{request.error}\n" +
-                    $"{request.downloadHandler.text}"
-                );
-
-                onComplete?.Invoke(null);
-                yield break;
+                Debug.LogError($"[GameManager] 백엔드 전송 실패: {request.error}");
             }
-
-            try
+            else
             {
-                AIFeedbackGenerateResponse response =
-                    JsonConvert.DeserializeObject<AIFeedbackGenerateResponse>(
-                        request.downloadHandler.text
-                    );
-
-                onComplete?.Invoke(response);
-            }
-            catch (Exception e)
-            {
-                Debug.LogError(
-                    $"[GameManager] AI 피드백 JSON 파싱 실패: {e.Message}\n" +
-                    request.downloadHandler.text
-                );
-
-                onComplete?.Invoke(null);
+                Debug.Log("[GameManager] 백엔드 저장 성공! DB 테이블이 업데이트 되었습니다.");
             }
         }
     }
