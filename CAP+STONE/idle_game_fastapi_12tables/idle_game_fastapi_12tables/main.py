@@ -2764,9 +2764,6 @@ def get_recent_usage(user_id: int, db: Session = Depends(get_db)):
 # ==========================================
 # 2. [POST] AI 분석 결과(피드백 및 퀘스트) DB 일괄 저장 API
 # ==========================================
-# ==========================================
-# 2. [POST] AI 분석 결과(피드백 및 퀘스트) DB 일괄 저장 API
-# ==========================================
 @app.post("/ai-feedbacks/")
 def create_ai_feedback(feedback_data: schemas.AIFeedbackCreate, db: Session = Depends(get_db)):
     # 1. ai_feedback_log 테이블에 멘트와 등급 저장
@@ -2778,29 +2775,27 @@ def create_ai_feedback(feedback_data: schemas.AIFeedbackCreate, db: Session = De
     )
     db.add(new_feedback)
 
-    # 2. user_quest 테이블에 할당 (중복 체크 추가)
     today = date.today()
+
+    # 2. [핵심 수정] 오늘 날짜로 발급된 기존 퀘스트를 전부 삭제하여 초기화
+    db.query(models.UserQuest).filter(
+        models.UserQuest.user_id == feedback_data.user_id,
+        models.UserQuest.assigned_date == today
+    ).delete(synchronize_session=False)
+
+    # 3. AI가 새롭게 판정한 퀘스트 목록으로 덮어쓰기 할당
     for q_id in feedback_data.assigned_quest_ids:
-        # 이미 오늘 날짜로 발급된 퀘스트인지 DB에서 확인
-        existing_quest = db.query(models.UserQuest).filter(
-            models.UserQuest.user_id == feedback_data.user_id,
-            models.UserQuest.quest_id == q_id,
-            models.UserQuest.assigned_date == today
-        ).first()
+        new_user_quest = models.UserQuest(
+            user_id=feedback_data.user_id,
+            quest_id=q_id,
+            current_value=0,
+            is_completed=False,
+            is_reward_claimed=False,
+            assigned_date=today
+        )
+        db.add(new_user_quest)
 
-        # 오늘 발급된 기록이 없을 때만 새로 추가 (Duplicate 에러 방지)
-        if not existing_quest:
-            new_user_quest = models.UserQuest(
-                user_id=feedback_data.user_id,
-                quest_id=q_id,
-                current_value=0,
-                is_completed=False,
-                is_reward_claimed=False,
-                assigned_date=today
-            )
-            db.add(new_user_quest)
-
-    # 3. 변경사항 확정 (DB Commit)
+    # 4. 변경사항 확정 (DB Commit)
     db.commit()
 
-    return {"status": "success", "message": "AI 피드백 로깅 및 퀘스트 할당이 성공적으로 완료되었습니다."}
+    return {"status": "success", "message": "AI 피드백 로깅 및 일일 퀘스트 갱신이 완료되었습니다."}

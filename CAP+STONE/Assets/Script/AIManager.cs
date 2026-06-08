@@ -71,7 +71,7 @@ public class AIManager : MonoBehaviour
 
     // ── 고정 폴백 멘트 (기획서 5차 원문) ─────────────────────────
     private readonly string systemInstructionText = @"역할: 당신은 방치형 키우기 게임의 플레이어 컨디션을 관리하는 AI 에이전트입니다.
-목표: 플레이어의 7일간 평균과 어제 사용 시간을 분석하여 등급을 판정하고, 고정 피드백 멘트 및 맞춤형 퀘스트 ID 3개를 JSON으로 반환합니다.
+목표: 플레이어의 7일간 평균과 어제 사용 시간을 분석하여 등급을 판정하고, 고정 피드백 멘트 및 맞춤형 퀘스트 ID를 JSON으로 반환합니다.
 
 [상태 판정 규칙]
 1. 평균 산출: 'recent_7days_minutes' 배열의 평균값을 구합니다.
