@@ -13,7 +13,7 @@ public class CurrencyUIManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI gemText;
 
     [Header("API")]
-    [SerializeField] private string baseUrl = "http://127.0.0.1:8000";
+    [SerializeField] private string baseUrl = "https://perennial-steadier-budding.ngrok-free.dev";
 
     [Header("References")]
     [SerializeField] private BattleRewardApi battleRewardApi;
@@ -139,7 +139,7 @@ public class CurrencyUIManager : MonoBehaviour
 
         isLoadingCurrency = true;
 
-        string url = $"{baseUrl}/users/{userId}/currency/";
+        string url = $"{baseUrl.Trim()}/users/{userId}/currency/";
 
         Debug.Log($"[CurrencyUIManager] 재화 조회 API 호출: {url}");
 

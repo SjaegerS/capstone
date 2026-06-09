@@ -8,7 +8,7 @@ public class EquipmentApi : MonoBehaviour
     public static EquipmentApi Instance { get; private set; }
 
     [Header("API")]
-    [SerializeField] private string baseUrl = "http://127.0.0.1:8000";
+    [SerializeField] private string baseUrl = "https://perennial-steadier-budding.ngrok-free.dev";
 
     private void Awake()
     {
@@ -34,7 +34,7 @@ public class EquipmentApi : MonoBehaviour
 
     private IEnumerator PatchEnhanceItem(int userItemId, Action<bool> onComplete)
     {
-        string url = $"{baseUrl}/user-items/{userItemId}/enhance/";
+        string url = $"{baseUrl.Trim()}/user-items/{userItemId}/enhance/";
 
         using (UnityWebRequest request = new UnityWebRequest(url, "PATCH"))
         {
@@ -69,7 +69,7 @@ public class EquipmentApi : MonoBehaviour
 
     private IEnumerator PatchEquipItem(int userItemId, Action<bool> onComplete)
     {
-        string url = $"{baseUrl}/user-items/{userItemId}/equip/";
+        string url = $"{baseUrl.Trim()}/user-items/{userItemId}/equip/";
 
         using (UnityWebRequest request = new UnityWebRequest(url, "PATCH"))
         {

@@ -6,7 +6,7 @@ using UnityEngine.SceneManagement;
 public class TitleManager : MonoBehaviour
 {
     [Header("API")]
-    [SerializeField] private string baseUrl = "http://127.0.0.1:8000";
+    [SerializeField] private string baseUrl = "https://perennial-steadier-budding.ngrok-free.dev";
 
     [Header("Scene")]
     [SerializeField] private string gameSceneName = "MainScene";
@@ -38,7 +38,7 @@ public class TitleManager : MonoBehaviour
 
     private IEnumerator CreateUserAndStart()
     {
-        string url = $"{baseUrl}/users";
+        string url = $"{baseUrl.Trim()}/users";
 
         Debug.Log($"[TitleManager] 유저 생성 API 호출: {url}");
 

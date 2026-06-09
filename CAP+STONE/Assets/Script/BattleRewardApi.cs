@@ -11,7 +11,7 @@ public class BattleRewardApi : MonoBehaviour
     public const string USER_ID_KEY = "USER_ID";
 
     [Header("API")]
-    [SerializeField] private string baseUrl = "http://127.0.0.1:8000";
+    [SerializeField] private string baseUrl = "https://perennial-steadier-budding.ngrok-free.dev";
     //[SerializeField] private string rewardEndpoint = "/battle/reward";
 
     [Header("User")]
@@ -171,7 +171,7 @@ public class BattleRewardApi : MonoBehaviour
         Action<UserStatusResponse> onSuccess,
         Action<string> onError = null)
     {
-        string url = $"{baseUrl}/battle/status/{userId}";
+        string url = $"{baseUrl.Trim()}/battle/status/{userId}";
 
         using (UnityWebRequest request = UnityWebRequest.Get(url))
         {
@@ -221,7 +221,7 @@ public class BattleRewardApi : MonoBehaviour
         Action<string> onError
     )
     {
-        string url = $"{baseUrl}/battle/reward";
+        string url = $"{baseUrl.Trim()}/battle/reward";
 
         BattleRewardRequest body = new BattleRewardRequest
         {
@@ -295,7 +295,7 @@ public class BattleRewardApi : MonoBehaviour
         Action<UserStatusResponse> onSuccess = null,
         Action<string> onError = null)
     {
-        string url = $"{baseUrl}/user-status/{userId}/gold";
+        string url = $"{baseUrl.Trim()}/user-status/{userId}/gold";
 
         AddGoldRequest data = new AddGoldRequest
         {
@@ -354,7 +354,7 @@ public class BattleRewardApi : MonoBehaviour
         Action<AiDemoFeedbackResponse> onSuccess = null,
         Action<string> onError = null)
     {
-        string url = $"{baseUrl}/ai/demo-feedback";
+        string url = $"{baseUrl.Trim()}/ai/demo-feedback";
 
         AiDemoFeedbackRequest data = new AiDemoFeedbackRequest
         {

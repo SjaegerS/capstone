@@ -1263,6 +1263,10 @@ PrefabInstance:
     m_TransformParent: {fileID: 1648565329}
     m_Modifications:
     - target: {fileID: 884100000000000001, guid: e2f66b73d8510c445877888252bc61a6, type: 3}
+      propertyPath: baseUrl
+      value: https://perennial-steadier-budding.ngrok-free.dev
+      objectReference: {fileID: 0}
+    - target: {fileID: 884100000000000001, guid: e2f66b73d8510c445877888252bc61a6, type: 3}
       propertyPath: gemText
       value: 
       objectReference: {fileID: 1784306370}
@@ -3384,7 +3388,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 15, y: 225}
+  m_AnchoredPosition: {x: 15.000015, y: 225}
   m_SizeDelta: {x: 50, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &314129736
@@ -4168,7 +4172,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7e2fa7646cb416d428c78d2cc724e375, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LevelPanelApi
-  baseUrl: http://127.0.0.1:8000
+  baseUrl: ' https://perennial-steadier-budding.ngrok-free.dev'
 --- !u!4 &448916166
 Transform:
   m_ObjectHideFlags: 0
@@ -7664,7 +7668,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 15, y: 175}
+  m_AnchoredPosition: {x: 15.000015, y: 175}
   m_SizeDelta: {x: 50, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &898935735
@@ -8107,7 +8111,7 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 43.2
+  m_fontSize: 43.15
   m_fontSizeBase: 36
   m_fontWeight: 400
   m_enableAutoSizing: 1
@@ -8688,7 +8692,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CurrencyUIManager
   goldText: {fileID: 1379995496}
   gemText: {fileID: 1784306370}
-  baseUrl: http://127.0.0.1:8000
+  baseUrl: ' https://perennial-steadier-budding.ngrok-free.dev'
   battleRewardApi: {fileID: 0}
 --- !u!4 &1011944414
 Transform:
@@ -11390,7 +11394,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8fd93d72617857e4ea41cba903488c83, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CharacterStatusApi
-  baseUrl: http://127.0.0.1:8000
+  baseUrl: ' https://perennial-steadier-budding.ngrok-free.dev'
   battleRewardApi: {fileID: 0}
 --- !u!4 &1397546662
 Transform:
@@ -11419,7 +11423,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1e9b2ac52923dab4184a4d614df33de6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BattleRewardApi
-  baseUrl: http://127.0.0.1:8000
+  baseUrl: ' https://perennial-steadier-budding.ngrok-free.dev'
   userIdOverride: 0
 --- !u!114 &1397546664
 MonoBehaviour:
@@ -11433,7 +11437,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: eb06a8043f97c724195424139e44f3f7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CharacterUpgradeApi
-  baseUrl: http://127.0.0.1:8000
+  baseUrl: ' https://perennial-steadier-budding.ngrok-free.dev'
   userIdOverride: 0
   battleRewardApi: {fileID: 0}
 --- !u!114 &1397546665
@@ -11475,7 +11479,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ac1a244d4eea4c543ac3b1e715883df0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::StageChallengeApi
-  baseUrl: http://127.0.0.1:8000
+  baseUrl: ' https://perennial-steadier-budding.ngrok-free.dev'
 --- !u!114 &1397546668
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -11488,7 +11492,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 484b836ac5615704b8c25dcd6bc37ac0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::EquipmentApi
-  baseUrl: http://127.0.0.1:8000
+  baseUrl: ' https://perennial-steadier-budding.ngrok-free.dev'
 --- !u!1001 &1401673531
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -14237,7 +14241,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4c5df7d6019d85a4b97849e10e1dfee0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameManager
-  backendUrl: http://127.0.0.1:8000
+  backendUrl: https://perennial-steadier-budding.ngrok-free.dev
   aiManager: {fileID: 574537099}
 --- !u!4 &1670778085
 Transform:
@@ -16901,6 +16905,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 1648565329}
     m_Modifications:
+    - target: {fileID: 884100000000000001, guid: e2f66b73d8510c445877888252bc61a6, type: 3}
+      propertyPath: baseUrl
+      value: https://perennial-steadier-budding.ngrok-free.dev
+      objectReference: {fileID: 0}
     - target: {fileID: 884100000000000001, guid: e2f66b73d8510c445877888252bc61a6, type: 3}
       propertyPath: gemText
       value: 

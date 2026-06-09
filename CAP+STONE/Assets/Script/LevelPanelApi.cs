@@ -6,7 +6,7 @@ using UnityEngine.Networking;
 public class LevelPanelApi : MonoBehaviour
 {
     [Header("API")]
-    [SerializeField] private string baseUrl = "http://127.0.0.1:8000";
+    [SerializeField] private string baseUrl = "https://perennial-steadier-budding.ngrok-free.dev";
 
     [Serializable]
     public class UserLevelPanelResponse
@@ -45,7 +45,7 @@ public class LevelPanelApi : MonoBehaviour
             yield break;
         }
 
-        string url = $"{baseUrl}/users/{userId}/level-panel";
+        string url = $"{baseUrl.Trim()}/users/{userId}/level-panel";
 
         using (UnityWebRequest request = UnityWebRequest.Get(url))
         {

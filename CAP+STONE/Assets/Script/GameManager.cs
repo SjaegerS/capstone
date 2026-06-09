@@ -36,7 +36,7 @@ public class AIFeedbackGenerateResponse
 public class GameManager : MonoBehaviour
 {
     [Header("Backend")]
-    [SerializeField] private string backendUrl = "http://127.0.0.1:8000";
+    [SerializeField] private string backendUrl = "https://perennial-steadier-budding.ngrok-free.dev";
 
     [Header("매니저 연결")]
     public AIManager aiManager;

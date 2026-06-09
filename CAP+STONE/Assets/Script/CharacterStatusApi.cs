@@ -8,7 +8,7 @@ public class CharacterStatusApi : MonoBehaviour
     private const string USER_ID_KEY = "USER_ID";
 
     [Header("API")]
-    [SerializeField] private string baseUrl = "http://127.0.0.1:8000";
+    [SerializeField] private string baseUrl = "https://perennial-steadier-budding.ngrok-free.dev";
 
     [Header("References")]
     [SerializeField] private BattleRewardApi battleRewardApi;
@@ -72,7 +72,7 @@ public class CharacterStatusApi : MonoBehaviour
 
     public IEnumerator GetCharacterStatuses(long userId)
     {
-        string url = $"{baseUrl}/users/{userId}/character-statuses/";
+        string url = $"{baseUrl.Trim()}/users/{userId}/character-statuses/";
 
         Debug.Log($"[CharacterStatusApi] 캐릭터 상태 조회 API 호출: {url}");
 
@@ -153,7 +153,7 @@ public class CharacterStatusApi : MonoBehaviour
 
     private IEnumerator GetUserStatus(long userId, System.Action<bool, UserStatusDto> onComplete)
 {
-    string url = $"{baseUrl}/users/{userId}/status";
+    string url = $"{baseUrl.Trim()}/users/{userId}/status";
 
     Debug.Log($"[CharacterStatusApi] 유저 상태 조회 API 호출: {url}");
 

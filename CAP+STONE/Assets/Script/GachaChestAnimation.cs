@@ -28,7 +28,7 @@ public class GachaChestAnimation : MonoBehaviour
     [SerializeField] private int fiftyFivePullGemCost = 5000;
 
     [Header("API")]
-    [SerializeField] private string baseUrl = "http://127.0.0.1:8000";
+    [SerializeField] private string baseUrl = "https://perennial-steadier-budding.ngrok-free.dev";
     [SerializeField] private BattleRewardApi battleRewardApi;
 
     [Header("Gacha Type")]
@@ -211,7 +211,7 @@ public class GachaChestAnimation : MonoBehaviour
         }
 
         int cost = GetGemCost(pullCount);
-        string url = $"{baseUrl}/users/{userId}/currency/spend-gem/";
+        string url = $"{baseUrl.Trim()}/users/{userId}/currency/spend-gem/";
 
         SpendCurrencyRequest requestBody = new SpendCurrencyRequest
         {
@@ -224,7 +224,7 @@ public class GachaChestAnimation : MonoBehaviour
         request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
         request.downloadHandler = new DownloadHandlerBuffer();
         request.SetRequestHeader("Content-Type", "application/json");
-
+        request.SetRequestHeader("ngrok-skip-browser-warning", "true");
         yield return request.SendWebRequest();
 
         if (request.result != UnityWebRequest.Result.Success)
@@ -380,7 +380,7 @@ public class GachaChestAnimation : MonoBehaviour
             yield break;
         }
 
-        string url = $"{baseUrl}/user-items/";
+        string url = $"{baseUrl.Trim()}/user-items/";
 
         UserItemCreateRequest requestBody = new UserItemCreateRequest
         {
@@ -397,6 +397,7 @@ public class GachaChestAnimation : MonoBehaviour
         request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
         request.downloadHandler = new DownloadHandlerBuffer();
         request.SetRequestHeader("Content-Type", "application/json");
+        request.SetRequestHeader("ngrok-skip-browser-warning", "true");
 
         yield return request.SendWebRequest();
 
@@ -446,7 +447,7 @@ public class GachaChestAnimation : MonoBehaviour
             yield break;
         }
 
-        string url = $"{baseUrl}/users/{userId}/currency/";
+        string url = $"{baseUrl.Trim()}/users/{userId}/currency/";
 
         UnityWebRequest request = UnityWebRequest.Get(url);
 
@@ -519,7 +520,7 @@ public class GachaChestAnimation : MonoBehaviour
         if (cachedItems != null && cachedItems.Length > 0)
             yield break;
 
-        string url = $"{baseUrl}/items/";
+        string url = $"{baseUrl.Trim()}/items/";
 
         UnityWebRequest request = UnityWebRequest.Get(url);
 
@@ -615,7 +616,7 @@ public class GachaChestAnimation : MonoBehaviour
 
         yield return StartCoroutine(LoadItemsIfNeeded());
 
-        string url = $"{baseUrl}/users/{userId}/items/";
+        string url = $"{baseUrl.Trim()}/users/{userId}/items/";
 
         UnityWebRequest request = UnityWebRequest.Get(url);
 
@@ -1381,12 +1382,14 @@ public class GachaChestAnimation : MonoBehaviour
     }
 
     [Serializable]
+    [UnityEngine.Scripting.Preserve]
     private class SpendCurrencyRequest
     {
         public int amount;
     }
 
     [Serializable]
+    [UnityEngine.Scripting.Preserve]
     private class CurrencyResponse
     {
         public long user_id;

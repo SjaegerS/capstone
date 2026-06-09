@@ -5,7 +5,7 @@ using UnityEngine.UI;
 
 public class EquipmentSlotUpgradeButton : MonoBehaviour
 {
-    private const string FastApiBaseUrl = "http://127.0.0.1:8000";
+    private const string FastApiBaseUrl = "https://perennial-steadier-budding.ngrok-free.dev";
 
     private Button button;
     private Sprite equipmentSprite;

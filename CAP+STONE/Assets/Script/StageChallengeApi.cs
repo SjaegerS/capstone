@@ -5,7 +5,7 @@ using UnityEngine.Networking;
 
 public class StageChallengeApi : MonoBehaviour
 {
-    [SerializeField] private string baseUrl = "http://127.0.0.1:8000";
+    [SerializeField] private string baseUrl = "https://perennial-steadier-budding.ngrok-free.dev";
 
     [Serializable]
     public class StageChallengeResponse
@@ -29,7 +29,7 @@ public class StageChallengeApi : MonoBehaviour
             yield break;
         }
 
-        string url = $"{baseUrl}/battle/challenge-stage/{userId}";
+        string url = $"{baseUrl.Trim()}/battle/challenge-stage/{userId}";
 
         using (UnityWebRequest request = UnityWebRequest.PostWwwForm(url, ""))
         {
